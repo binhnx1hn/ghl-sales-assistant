@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "GHL Sales Assistant",
+  "description": "One-click lead capture from Google Search, Maps, and directory sites to GoHighLevel CRM",
+  "version": "1.0.0",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.google.com/*",
+    "https://www.google.com.au/*",
+    "https://maps.google.com/*",
+    "https://www.yelp.com/*",
+    "https://www.yellowpages.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.google.com/search*",
+        "https://www.google.com/maps/*",
+        "https://maps.google.com/*",
+        "https://www.yelp.com/*",
+        "https://www.yellowpages.com/*"
+      ],
+      "js": [
+        "utils/constants.js",
+        "content/extractors/google-search.js",
+        "content/extractors/google-maps.js",
+        "content/extractors/generic.js",
+        "content/components/floating-button.js",
+        "content/components/review-popup.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

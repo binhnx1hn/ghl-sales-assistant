@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GHL Sales Assistant - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-container">
+    <div class="options-header">
+      <h1>⚡ GHL Sales Assistant Settings</h1>
+      <p>Configure your extension to connect with the backend server.</p>
+    </div>
+
+    <div class="options-section">
+      <h2>🔗 Backend Connection</h2>
+
+      <div class="form-group">
+        <label for="api-url">Backend API URL</label>
+        <input type="text" id="api-url" placeholder="http://localhost:8000/api/v1" />
+        <small>The URL of your GHL Sales Assistant backend server.</small>
+      </div>
+
+      <div class="form-group">
+        <button id="btn-test" class="btn btn-secondary">Test Connection</button>
+        <span id="test-result" class="test-result"></span>
+      </div>
+    </div>
+
+    <div class="options-section">
+      <h2>🏷️ Default Tags</h2>
+
+      <div class="form-group">
+        <label for="default-tags">Default Tags (comma-separated)</label>
+        <input type="text" id="default-tags" placeholder="New Lead, Nursing Home" />
+        <small>These tags will be pre-selected when capturing a new lead.</small>
+      </div>
+    </div>
+
+    <div class="options-section">
+      <h2>📍 Market / Location</h2>
+
+      <div class="form-group">
+        <label for="default-market">Default Market</label>
+        <input type="text" id="default-market" placeholder="e.g. Denver, Austin" />
+        <small>Your assigned market/city. This tag will be automatically added to all captured leads.</small>
+      </div>
+    </div>
+
+    <div class="options-footer">
+      <button id="btn-save" class="btn btn-primary">Save Settings</button>
+      <span id="save-result" class="save-result"></span>
+    </div>
+  </div>
+
+  <script src="../utils/constants.js"></script>
+  <script src="../utils/storage.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

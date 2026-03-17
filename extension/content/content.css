@@ -1,0 +1,360 @@
+/**
+ * GHL Sales Assistant - Content Script Styles
+ *
+ * All styles use the .ghl-sa- prefix to avoid conflicts with page styles.
+ * Uses !important where necessary to override page CSS.
+ */
+
+/* ─── Floating Action Button ─────────────────────────────────── */
+
+.ghl-sa-floating-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 14px !important;
+  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4) !important;
+  transition: all 0.2s ease !important;
+  z-index: 2147483647 !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+
+.ghl-sa-floating-btn:hover {
+  background: linear-gradient(135deg, #4338CA 0%, #6D28D9 100%) !important;
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+.ghl-sa-btn-icon {
+  font-size: 16px !important;
+}
+
+.ghl-sa-btn-text {
+  letter-spacing: 0.3px !important;
+}
+
+/* ─── Overlay ────────────────────────────────────────────────── */
+
+.ghl-sa-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 2147483647 !important;
+  animation: ghl-sa-fade-in 0.2s ease !important;
+}
+
+.ghl-sa-popup-fade-out {
+  animation: ghl-sa-fade-out 0.2s ease forwards !important;
+}
+
+@keyframes ghl-sa-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ghl-sa-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ─── Popup ──────────────────────────────────────────────────── */
+
+.ghl-sa-popup {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  width: 460px !important;
+  max-width: 95vw !important;
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  animation: ghl-sa-slide-up 0.3s ease !important;
+}
+
+@keyframes ghl-sa-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ─── Popup Header ───────────────────────────────────────────── */
+
+.ghl-sa-popup-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 16px 20px !important;
+  border-bottom: 1px solid #E5E7EB !important;
+  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
+  border-radius: 12px 12px 0 0 !important;
+}
+
+.ghl-sa-popup-header h3 {
+  margin: 0 !important;
+  color: #ffffff !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.ghl-sa-popup-close {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border: none !important;
+  color: #ffffff !important;
+  font-size: 20px !important;
+  cursor: pointer !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background 0.2s !important;
+}
+
+.ghl-sa-popup-close:hover {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* ─── Popup Body ─────────────────────────────────────────────── */
+
+.ghl-sa-popup-body {
+  padding: 20px !important;
+}
+
+.ghl-sa-form-group {
+  margin-bottom: 14px !important;
+}
+
+.ghl-sa-form-group label {
+  display: block !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #374151 !important;
+  margin-bottom: 4px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.ghl-sa-form-group input[type="text"],
+.ghl-sa-form-group input[type="date"],
+.ghl-sa-form-group textarea {
+  width: 100% !important;
+  padding: 8px 12px !important;
+  border: 1px solid #D1D5DB !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  font-family: inherit !important;
+  color: #1F2937 !important;
+  background: #F9FAFB !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+  box-sizing: border-box !important;
+}
+
+.ghl-sa-form-group input:focus,
+.ghl-sa-form-group textarea:focus {
+  outline: none !important;
+  border-color: #4F46E5 !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1) !important;
+  background: #ffffff !important;
+}
+
+.ghl-sa-form-group textarea {
+  resize: vertical !important;
+  min-height: 60px !important;
+}
+
+.ghl-sa-form-row {
+  display: flex !important;
+  gap: 12px !important;
+}
+
+.ghl-sa-form-half {
+  flex: 1 !important;
+}
+
+/* ─── Tags ───────────────────────────────────────────────────── */
+
+.ghl-sa-tags-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+.ghl-sa-tag-label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 4px 10px !important;
+  background: #F3F4F6 !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 16px !important;
+  cursor: pointer !important;
+  font-size: 12px !important;
+  color: #4B5563 !important;
+  transition: all 0.2s !important;
+  user-select: none !important;
+}
+
+.ghl-sa-tag-label:hover {
+  background: #EEF2FF !important;
+  border-color: #C7D2FE !important;
+}
+
+.ghl-sa-tag-label input[type="checkbox"] {
+  width: 14px !important;
+  height: 14px !important;
+  margin: 0 !important;
+  accent-color: #4F46E5 !important;
+}
+
+.ghl-sa-tag-label:has(input:checked) {
+  background: #EEF2FF !important;
+  border-color: #4F46E5 !important;
+  color: #4F46E5 !important;
+  font-weight: 600 !important;
+}
+
+.ghl-sa-custom-tag {
+  display: flex !important;
+  gap: 6px !important;
+  margin-top: 6px !important;
+}
+
+.ghl-sa-custom-tag input {
+  flex: 1 !important;
+  padding: 6px 10px !important;
+  border: 1px solid #D1D5DB !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-family: inherit !important;
+  box-sizing: border-box !important;
+}
+
+.ghl-sa-custom-tag button {
+  padding: 6px 12px !important;
+  background: #4F46E5 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.ghl-sa-custom-tag button:hover {
+  background: #4338CA !important;
+}
+
+/* ─── Source Info ─────────────────────────────────────────────── */
+
+.ghl-sa-source-info {
+  padding: 8px 0 !important;
+  border-top: 1px solid #F3F4F6 !important;
+  margin-top: 8px !important;
+}
+
+.ghl-sa-source-info small {
+  color: #9CA3AF !important;
+  font-size: 11px !important;
+}
+
+/* ─── Popup Footer ───────────────────────────────────────────── */
+
+.ghl-sa-popup-footer {
+  padding: 14px 20px !important;
+  border-top: 1px solid #E5E7EB !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.ghl-sa-btn {
+  padding: 10px 20px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+  font-family: inherit !important;
+}
+
+.ghl-sa-btn-cancel {
+  background: #F3F4F6 !important;
+  color: #6B7280 !important;
+}
+
+.ghl-sa-btn-cancel:hover {
+  background: #E5E7EB !important;
+}
+
+.ghl-sa-btn-save {
+  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
+  color: #ffffff !important;
+}
+
+.ghl-sa-btn-save:hover {
+  background: linear-gradient(135deg, #4338CA 0%, #6D28D9 100%) !important;
+}
+
+.ghl-sa-btn-save:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+/* ─── Form Error ─────────────────────────────────────────────── */
+
+.ghl-sa-form-error {
+  background: #FEF2F2 !important;
+  color: #DC2626 !important;
+  padding: 8px 12px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  margin-bottom: 10px !important;
+  border: 1px solid #FECACA !important;
+}
+
+/* ─── Toast Notifications ────────────────────────────────────── */
+
+.ghl-sa-toast {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  padding: 12px 20px !important;
+  border-radius: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  z-index: 2147483647 !important;
+  animation: ghl-sa-slide-up 0.3s ease !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.ghl-sa-toast-success {
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+
+.ghl-sa-toast-error {
+  background: #DC2626 !important;
+  color: #ffffff !important;
+}
+
+.ghl-sa-toast-fade {
+  animation: ghl-sa-fade-out 0.3s ease forwards !important;
+}

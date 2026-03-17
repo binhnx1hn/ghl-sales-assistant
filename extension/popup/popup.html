@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GHL Sales Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="popup-header">
+      <h1>⚡ GHL Assistant</h1>
+      <span class="version" id="version"></span>
+    </div>
+
+    <div class="popup-status" id="status-section">
+      <div class="status-indicator" id="status-indicator">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking connection...</span>
+      </div>
+    </div>
+
+    <div class="popup-stats" id="stats-section" style="display: none;">
+      <div class="stat-item">
+        <span class="stat-value" id="stat-today">0</span>
+        <span class="stat-label">Captured Today</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-total">0</span>
+        <span class="stat-label">Total Leads</span>
+      </div>
+    </div>
+
+    <div class="popup-recent" id="recent-section" style="display: none;">
+      <h3>Recent Captures</h3>
+      <ul id="recent-list"></ul>
+    </div>
+
+    <div class="popup-actions">
+      <button id="btn-settings" class="btn btn-secondary">
+        ⚙️ Settings
+      </button>
+      <button id="btn-refresh" class="btn btn-primary">
+        🔄 Refresh
+      </button>
+    </div>
+
+    <div class="popup-footer">
+      <small>Hover over a business listing and click "Send to GHL" to capture.</small>
+    </div>
+  </div>
+
+  <script src="../utils/constants.js"></script>
+  <script src="../utils/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
