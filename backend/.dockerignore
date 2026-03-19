@@ -1,0 +1,33 @@
+# GHL Sales Assistant - Docker Ignore
+# Excludes unnecessary files from Docker build context
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment files (secrets — mount at runtime)
+.env
+
+# Version control
+.git/
+.gitignore
+
+# Testing
+.pytest_cache/
+tests/
+
+# Documentation
+*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

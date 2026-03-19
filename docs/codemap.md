@@ -54,3 +54,53 @@ URL matched by manifest.json
 | Google Maps place page | `/maps/place/` + `h1.DUwDvf` | Right of info panel |
 | Yelp `/biz/` detail page | `yelp.com` + `/biz/` path | Top-right of content (fixed, right: 20px) |
 | Search result cards | Default | Right of hovered listing |
+
+### Extension Packaging
+
+| File | Purpose |
+|------|---------|
+| [`package-extension.sh`](../package-extension.sh) | Linux/macOS packaging script — reads version from `manifest.json`, copies to `dist/`, excludes `.svg`/`.md`/`.git`/`node_modules`, creates `.zip` |
+| [`package-extension.bat`](../package-extension.bat) | Windows equivalent using PowerShell `Compress-Archive` |
+
+**Output**: `dist/ghl-sales-assistant-extension-v{version}.zip` (22 files, ~32 KB)
+
+---
+
+## Backend — FastAPI API (`backend/`)
+
+### Architecture
+- **Type**: Python FastAPI REST API
+- **Entry**: [`app/main.py`](../backend/app/main.py) → FastAPI app with CORS, health endpoint, v1 router
+- **Config**: [`app/config.py`](../backend/app/config.py) → Pydantic Settings from `.env`
+
+### API Layer (`backend/app/api/v1/`)
+
+| File | Purpose | Key Endpoints |
+|------|---------|---------------|
+| [`router.py`](../backend/app/api/v1/router.py) | V1 router aggregator | Mounts leads + tags routers |
+| [`leads.py`](../backend/app/api/v1/leads.py) | Lead CRUD via GHL API | `POST /leads`, `GET /leads/{id}` |
+| [`tags.py`](../backend/app/api/v1/tags.py) | Tag management via GHL API | `GET /tags`, `POST /tags` |
+
+### Services (`backend/app/services/`)
+
+| File | Purpose |
+|------|---------|
+| [`ghl_service.py`](../backend/app/services/ghl_service.py) | HTTP client for GoHighLevel API |
+| [`lead_service.py`](../backend/app/services/lead_service.py) | Lead business logic layer |
+
+### Utils (`backend/app/utils/`)
+
+| File | Purpose |
+|------|---------|
+| [`exceptions.py`](../backend/app/utils/exceptions.py) | Custom exception classes |
+
+### Deployment & Packaging
+
+| File | Purpose |
+|------|---------|
+| [`Dockerfile`](../backend/Dockerfile) | Multi-stage build, non-root user, `WORKERS` env var |
+| [`.dockerignore`](../backend/.dockerignore) | Excludes `__pycache__`, `.env`, `venv`, `tests` from build context |
+| [`docker-compose.yml`](../docker-compose.yml) | Single-service compose with healthcheck, logging (json-file 10m×3), `ghl-network` |
+| [`deploy.sh`](../deploy.sh) | Linux/macOS one-command deploy script (`--build`, `--restart`, `--logs`, `--stop`) |
+| [`deploy.bat`](../deploy.bat) | Windows equivalent deploy script |
+| [`.env.example`](../backend/.env.example) | Template for required environment variables |
