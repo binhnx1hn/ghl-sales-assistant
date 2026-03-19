@@ -8,6 +8,38 @@
 
 const GenericExtractor = {
   /**
+   * Yelp often wraps outbound links with redirect URLs (e.g. /biz_redir?url=...).
+   * This extracts the real outbound URL when possible.
+   * @param {string} href
+   * @returns {string}
+   * @private
+   */
+  _unwrapYelpRedirect(href) {
+    if (!href) return "";
+    try {
+      const u = new URL(href, window.location.origin);
+
+      // If already an external URL, keep it.
+      if (u.origin !== window.location.origin) return u.href;
+
+      // Yelp redirect patterns.
+      // Examples: /biz_redir?url=...  or /adredir?...&redirect_url=...
+      const real =
+        u.searchParams.get("url") ||
+        u.searchParams.get("redirect_url") ||
+        u.searchParams.get("redirectUrl") ||
+        "";
+      if (!real) return href;
+
+      // decodeURIComponent is safe here; URLSearchParams already decodes most cases.
+      const decoded = decodeURIComponent(real);
+      return decoded.startsWith("http") ? decoded : `https://${decoded}`;
+    } catch {
+      return href;
+    }
+  },
+
+  /**
    * Check if this extractor should be used as a fallback.
    * Always returns true since it's the generic catch-all.
    * @returns {boolean}
@@ -23,15 +55,35 @@ const GenericExtractor = {
    * @returns {Object|null} Extracted business data or null
    */
   extract(targetElement) {
+    const isYelp = window.location.hostname.includes("yelp.com");
+
+    // Yelp: Schema.org often sets `url` to the Yelp business URL.
+    // We still want the *real* business website, so merge Yelp-specific website extraction.
+    if (isYelp) {
+      const schemaResult = this._extractFromSchemaOrg();
+      const yelpResult = this._extractFromYelp(targetElement);
+
+      if (schemaResult?.businessName || yelpResult?.businessName) {
+        const merged = { ...(schemaResult || {}), ...(yelpResult || {}) };
+
+        // Prefer non-Yelp website if available
+        const website = merged.website || "";
+        if (!website || website.includes("yelp.com/")) {
+          const yelpWebsite = yelpResult?.website || "";
+          if (yelpWebsite && !yelpWebsite.includes("yelp.com/")) {
+            merged.website = yelpWebsite;
+          } else {
+            merged.website = "";
+          }
+        }
+
+        return merged;
+      }
+    }
+
     // Strategy 1: Try Schema.org structured data (JSON-LD)
     const schemaResult = this._extractFromSchemaOrg();
     if (schemaResult && schemaResult.businessName) return schemaResult;
-
-    // Strategy 2: Try Yelp-specific extraction
-    if (window.location.hostname.includes("yelp.com")) {
-      const yelpResult = this._extractFromYelp(targetElement);
-      if (yelpResult) return yelpResult;
-    }
 
     // Strategy 3: Try Yellow Pages-specific extraction
     if (window.location.hostname.includes("yellowpages.com")) {
@@ -219,7 +271,7 @@ const GenericExtractor = {
     } else {
       // We might be on a business detail page
       const nameEl = document.querySelector(
-        "h1[class*='heading'], h1[class*='businessName']"
+        "h1[class*='heading'], h1[class*='businessName'], h1"
       );
       if (nameEl) data.businessName = nameEl.textContent.trim();
 
@@ -228,15 +280,43 @@ const GenericExtractor = {
       );
       if (phoneEl) {
         data.phone = phoneEl.textContent.trim();
+      } else {
+        // Yelp redesign: phone appears as text near "Phone number" label in sidebar.
+        const phoneLabel = Array.from(document.querySelectorAll("p")).find(
+          (p) => p.textContent.trim().toLowerCase() === "phone number"
+        );
+        const phoneValue = phoneLabel?.nextElementSibling?.textContent?.trim() || "";
+        if (phoneValue) data.phone = phoneValue;
       }
 
       const addressEl = document.querySelector("address, p[class*='address']");
       if (addressEl) data.address = addressEl.textContent.trim();
 
-      const websiteLink = document.querySelector(
-        "a[href*='biz_redir'], a[class*='website']"
-      );
-      if (websiteLink) data.website = websiteLink.href;
+      // Prefer the "Business website" block in Yelp sidebar on biz pages.
+      const sidebar = document.querySelector("[data-testid='sidebar-content']");
+      let websiteLink = null;
+      if (sidebar) {
+        const websiteLabel = Array.from(sidebar.querySelectorAll("p")).find(
+          (p) => p.textContent.trim().toLowerCase() === "business website"
+        );
+        websiteLink = websiteLabel?.nextElementSibling?.querySelector("a[href*='biz_redir']") || null;
+      }
+      if (!websiteLink) {
+        websiteLink = document.querySelector("a[href*='biz_redir'], a[class*='website']");
+      }
+      if (websiteLink) {
+        data.website = this._unwrapYelpRedirect(websiteLink.href);
+        // Fallback: sometimes Yelp shows the domain as text while href is a tracking URL.
+        if (
+          (!data.website || data.website.includes("yelp.com/")) &&
+          websiteLink.textContent
+        ) {
+          const text = websiteLink.textContent.trim();
+          if (text && !text.includes(" ")) {
+            data.website = text.startsWith("http") ? text : `https://${text}`;
+          }
+        }
+      }
     }
 
     return data.businessName ? data : null;

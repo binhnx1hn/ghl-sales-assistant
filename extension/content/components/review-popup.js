@@ -294,6 +294,17 @@ const ReviewPopup = {
       "info"
     );
 
+    // Defensive check: in some environments the `chrome.runtime` API
+    // or `sendMessage` may not be available (e.g. if this script is
+    // evaluated outside of a proper extension context).
+    if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+      this._showToast(
+        "❌ Cannot save lead: extension messaging API is unavailable on this page.",
+        "error"
+      );
+      return;
+    }
+
     // Fire and don't await - background handles it
     chrome.runtime.sendMessage(
       { action: "captureLead", data: formData },

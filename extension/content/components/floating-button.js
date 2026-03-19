@@ -9,6 +9,7 @@
 const FloatingButton = {
   _button: null,
   _currentTarget: null,
+  _yelpRepositionHandler: null,
 
   /**
    * Initialize the floating button and attach it to the page.
@@ -32,6 +33,46 @@ const FloatingButton = {
     });
 
     document.body.appendChild(this._button);
+  },
+
+  /**
+   * Best-effort anchor element for Yelp screens.
+   * - Prefer visible modal/dialog containers (Yelp often shows biz details in a modal over map/search).
+   * - Fallback to business name heading container.
+   * - Fallback to main content container.
+   * @returns {HTMLElement|null}
+   * @private
+   */
+  _getYelpAnchor() {
+    // Prefer the right sidebar on Yelp biz pages when present
+    const sidebar =
+      document.querySelector("[data-testid='sidebar-content']") ||
+      document.querySelector("div[data-testid='sidebar-content']") ||
+      null;
+    if (sidebar) {
+      const rect = sidebar.getBoundingClientRect();
+      if (rect.width > 200 && rect.height > 200) return sidebar;
+    }
+
+    // Prefer an active dialog/modal if present
+    const dialog =
+      document.querySelector(
+        "div[role='dialog'], [data-testid*='modal'], [data-testid*='Modal']"
+      ) || null;
+    if (dialog) {
+      const rect = dialog.getBoundingClientRect();
+      // Filter out hidden/offscreen dialogs
+      if (rect.width > 200 && rect.height > 200) return dialog;
+    }
+
+    const h1 = document.querySelector("h1");
+    if (h1) return h1.closest("header, section, div") || h1.parentElement || h1;
+
+    return (
+      document.querySelector("main") ||
+      document.querySelector("#wrap") ||
+      document.querySelector(".biz-page-header")
+    );
   },
 
   /**
@@ -77,11 +118,61 @@ const FloatingButton = {
         this._button.style.right = "auto";
       }
     } else if (isYelpBizPage) {
-      // On Yelp biz detail pages, position near top-right of business content
-      const panelRect = element.getBoundingClientRect();
-      this._button.style.top = `${Math.max(panelRect.top + 10, 80)}px`;
-      this._button.style.right = "20px";
-      this._button.style.left = "auto";
+      // On Yelp biz detail pages, Yelp may render details either inline or inside a modal.
+      // Prefer anchoring to the right sidebar; otherwise anchor to dialog/heading.
+      const anchor = this._getYelpAnchor() || element;
+      const rect = anchor.getBoundingClientRect();
+
+      const btnWidth = 170; // a bit safer for longer text
+      const margin = 16;
+
+      // Place adjacent to the right edge of anchor when possible.
+      // If that would go offscreen, fall back to inside the anchor's top-right.
+      const desiredTop = rect.top + margin;
+      const clampedTop = Math.min(
+        Math.max(desiredTop, 96), // keep below common Yelp header heights
+        window.innerHeight - 56
+      );
+      const desiredOutsideLeft = rect.right + 12;
+      const outsideFits =
+        desiredOutsideLeft + btnWidth <= window.innerWidth - margin;
+      const desiredLeft = outsideFits
+        ? desiredOutsideLeft
+        : rect.right - btnWidth - margin;
+      const clampedLeft = Math.min(Math.max(desiredLeft, margin), window.innerWidth - btnWidth - margin);
+
+      this._button.style.top = `${clampedTop}px`;
+      this._button.style.left = `${clampedLeft}px`;
+      this._button.style.right = "auto";
+
+      // Keep it stable if Yelp reflows (modal open/close, dynamic content).
+      if (!this._yelpRepositionHandler) {
+        this._yelpRepositionHandler = () => {
+          if (!this._button || this._button.style.display === "none") return;
+          if (
+            !window.location.hostname.includes("yelp.com") ||
+            !window.location.pathname.startsWith("/biz/")
+          ) {
+            return;
+          }
+          const a = this._getYelpAnchor();
+          if (!a) return;
+          const r = a.getBoundingClientRect();
+          const top = Math.min(
+            Math.max(r.top + margin, 96),
+            window.innerHeight - 56
+          );
+          const outsideLeft = r.right + 12;
+          const fits = outsideLeft + btnWidth <= window.innerWidth - margin;
+          const baseLeft = fits ? outsideLeft : r.right - btnWidth - margin;
+          const left = Math.min(Math.max(baseLeft, margin), window.innerWidth - btnWidth - margin);
+          this._button.style.top = `${top}px`;
+          this._button.style.left = `${left}px`;
+          this._button.style.right = "auto";
+        };
+        window.addEventListener("resize", this._yelpRepositionHandler, { passive: true });
+        window.addEventListener("scroll", this._yelpRepositionHandler, { passive: true, capture: true });
+      }
     } else {
       // On search results, position near the hovered listing
       const rect = element.getBoundingClientRect();

@@ -63,6 +63,56 @@ const GoogleSearchExtractor = {
   },
 
   /**
+   * Best-effort detection of the real external "Website" link inside a Google
+   * Search local/knowledge panel block.
+   * - Prefer anchors that are explicitly marked as website buttons.
+   * - Fallback to non-Google, non-Maps HTTP links.
+   * @param {HTMLElement} root
+   * @returns {HTMLAnchorElement|null}
+   * @private
+   */
+  _findWebsiteLink(root) {
+    if (!root) return null;
+
+    // 1) Explicit website attrid (older layouts)
+    let link =
+      root.querySelector("a[href^='http'][data-attrid*='website']") ||
+      root.querySelector("[data-attrid*='website'] a[href^='http']");
+    if (link) return link;
+
+    // 2) Buttons whose text contains "Website" (newer layouts, e.g. span.aSAiSd)
+    const websiteButtons = Array.from(
+      root.querySelectorAll("a[href^='http'][ping]")
+    );
+    for (const a of websiteButtons) {
+      const label = a.textContent || "";
+      if (label.toLowerCase().includes("website")) {
+        return a;
+      }
+    }
+
+    // 3) Fallback: any non-Google, non-Maps link inside the panel/container.
+    const candidates = Array.from(root.querySelectorAll("a[href^='http']"));
+    for (const a of candidates) {
+      try {
+        const url = new URL(a.href);
+        const host = url.hostname.toLowerCase();
+        const path = url.pathname || "";
+        const isGoogleDomain = host.includes("google.") || host.endsWith(".google");
+        const isMapsPath = path.includes("/maps/");
+        if (!isGoogleDomain && !isMapsPath) {
+          return a;
+        }
+      } catch {
+        // Ignore malformed URLs and keep looking
+        continue;
+      }
+    }
+
+    return null;
+  },
+
+  /**
    * Extract business data from a local pack (map) result.
    * @param {HTMLElement} element
    * @returns {Object|null}
@@ -155,15 +205,10 @@ const GoogleSearchExtractor = {
       }
     }
 
-    // Website link
-    const websiteLink =
-      container.querySelector("a[href*='http'][data-attrid*='website']") ||
-      container.querySelector("a.yYlJEf") ||
-      container.querySelector("a[ping]");
-
-    if (websiteLink) {
-      data.website = websiteLink.href;
-    }
+    // Website link - prefer explicit "Website" button and external domains,
+    // avoid Google Maps / internal Google URLs.
+    const websiteLink = this._findWebsiteLink(container);
+    if (websiteLink) data.website = websiteLink.href;
 
     // Rating
     const ratingEl =
@@ -240,13 +285,11 @@ const GoogleSearchExtractor = {
       data.state = parts.state;
     }
 
-    // Website
-    const websiteEl = panel.querySelector(
-      "[data-attrid*='website'] a, a[data-attrid*='visit']"
-    );
-    if (websiteEl) {
-      data.website = websiteEl.href;
-    }
+    // Website - use the same helper we use for local pack cards so that we
+    // correctly pick the "Website" button (e.g. <span class="aSAiSd">Website</span>)
+    // instead of Google Maps URLs.
+    const websiteEl = this._findWebsiteLink(panel);
+    if (websiteEl) data.website = websiteEl.href;
 
     // Rating
     const ratingEl = panel.querySelector("span.Aq14fc, span.yi40Hd");

@@ -38,3 +38,16 @@ On Yelp business detail pages (e.g. `https://www.yelp.com/biz/buena-vista-care-c
 - [ ] Click "Send to GHL" on Yelp biz page → ReviewPopup opens with extracted data
 - [ ] Google Maps `/maps/place/` pages still work as before
 - [ ] Google Search result hover still works as before
+
+---
+
+## Bug Report: Google Search Extractor — Wrong Website URL Extracted
+
+**Date**: 2026-03-19
+**Status**: 🔴 QC-FAIL — needs FE fix
+**Audit**: See [`docs/audit.md`](audit.md) BUG-001
+
+### Summary
+[`_extractFromLocalPack()`](../extension/content/extractors/google-search.js:159) fallback selector `a[ping]` is too broad — it matches the Google Maps place link before the actual business website link. Leads sent to GHL get a `google.com/maps` URL instead of the real website.
+
+**Signal**: `qc-fail` → `pm` → route to FE Dev
