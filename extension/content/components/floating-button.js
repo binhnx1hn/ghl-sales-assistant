@@ -42,14 +42,29 @@ const FloatingButton = {
     if (!this._button) this.init();
 
     this._currentTarget = element;
-    const rect = element.getBoundingClientRect();
 
-    // Position the button at the top-right corner of the listing
+    // Check if this is a direct Google Maps place page
+    const isDirectPlacePage =
+      window.location.pathname.includes("/maps/place/") &&
+      !!document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge");
+
     this._button.style.position = "fixed";
-    this._button.style.top = `${Math.max(rect.top, 10)}px`;
-    this._button.style.left = `${Math.min(rect.right + 8, window.innerWidth - 160)}px`;
-    this._button.style.display = "flex";
     this._button.style.zIndex = "2147483647";
+    this._button.style.display = "flex";
+
+    if (isDirectPlacePage) {
+      // On direct place pages, show button at a fixed prominent position
+      // (top-right area, always visible)
+      this._button.style.top = "80px";
+      this._button.style.left = "auto";
+      this._button.style.right = "20px";
+    } else {
+      // On search results, position near the hovered listing
+      const rect = element.getBoundingClientRect();
+      this._button.style.top = `${Math.max(rect.top, 10)}px`;
+      this._button.style.left = `${Math.min(rect.right + 8, window.innerWidth - 160)}px`;
+      this._button.style.right = "auto";
+    }
   },
 
   /**

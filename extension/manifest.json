@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GHL Sales Assistant",
   "description": "One-click lead capture from Google Search, Maps, and directory sites to GoHighLevel CRM",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "permissions": [
     "activeTab",
     "storage"
@@ -21,7 +21,9 @@
     {
       "matches": [
         "https://www.google.com/search*",
+        "https://www.google.com/maps*",
         "https://www.google.com/maps/*",
+        "https://www.google.com/maps/place/*",
         "https://maps.google.com/*",
         "https://www.yelp.com/*",
         "https://www.yellowpages.com/*"

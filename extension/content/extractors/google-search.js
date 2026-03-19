@@ -88,17 +88,23 @@ const GoogleSearchExtractor = {
       sourceType: GHL_ASSISTANT.SOURCE_TYPES.GOOGLE_SEARCH,
     };
 
-    // Business name - try multiple selectors
+    // Business name - use data-attrid='title' first (most reliable),
+    // avoid .OSrXXb which matches "Suggest an edit" container
     const nameEl =
-      container.querySelector(".OSrXXb") || // Local pack name
+      container.querySelector("div[data-attrid='title']") ||
       container.querySelector("[data-attrid='title'] span") ||
+      container.querySelector("h2[data-attrid='title']") ||
       container.querySelector(".dbg0pd") ||
       container.querySelector("span.czHgge") ||
-      container.querySelector("a .lhCR5d") ||
-      container.querySelector("div[role='heading']");
+      container.querySelector("a .lhCR5d");
 
     if (nameEl) {
-      data.businessName = nameEl.textContent.trim();
+      // Get text but exclude nested "Suggest an edit" buttons
+      const clone = nameEl.cloneNode(true);
+      // Remove any <a>, <button> child elements that might contain "Suggest an edit"
+      clone.querySelectorAll("a, button").forEach((el) => el.remove());
+      const nameText = clone.textContent.trim();
+      data.businessName = nameText || nameEl.childNodes[0]?.textContent?.trim() || "";
     }
 
     // Address
@@ -115,24 +121,37 @@ const GoogleSearchExtractor = {
       data.state = parts.state;
     }
 
-    // Phone
-    const phoneEl = container.querySelector(
-      "[data-attrid='kc:/collection/knowledge_panels/has_phone:phone'] .LrzXr, " +
-      "[data-dtype='d3ph'] .LrzXr, " +
-      "span[data-phone-number]"
-    );
-    if (phoneEl) {
-      data.phone = phoneEl.textContent.trim();
+    // Phone - use data-attrid selectors for GHL Knowledge Panel
+    const phoneSelectors = [
+      "[data-attrid*='phone'] .LrzXr",
+      "[data-attrid*='phone'] span",
+      "[data-dtype='d3ph'] .LrzXr",
+      "span[data-phone-number]",
+      "[data-attrid='kc:/collection/knowledge_panels/has_phone:phone'] .LrzXr",
+    ];
+    for (const sel of phoneSelectors) {
+      const el = container.querySelector(sel);
+      if (el) {
+        const text = el.textContent.trim();
+        // Validate: must have at least 10 digits
+        const digits = text.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          data.phone = text;
+          break;
+        }
+      }
     }
 
-    // Try to find phone in the text content
+    // Fallback: scan full text for E.164 or standard US format
+    // Use strict pattern to avoid partial numbers like 568.2352941
     if (!data.phone) {
       const allText = container.textContent;
+      // Match full US phone: (xxx) xxx-xxxx OR +1 xxx-xxx-xxxx OR xxx-xxx-xxxx
       const phoneMatch = allText.match(
-        /\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/
+        /(?:\+1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/
       );
       if (phoneMatch) {
-        data.phone = phoneMatch[0];
+        data.phone = phoneMatch[0].trim();
       }
     }
 
@@ -180,21 +199,34 @@ const GoogleSearchExtractor = {
       sourceType: GHL_ASSISTANT.SOURCE_TYPES.GOOGLE_SEARCH,
     };
 
-    // Business name
+    // Business name - get from data-attrid='title', exclude nested buttons/links
     const nameEl =
+      panel.querySelector("div[data-attrid='title']") ||
       panel.querySelector("[data-attrid='title'] span") ||
-      panel.querySelector("h2[data-attrid='title']") ||
-      panel.querySelector("div[data-attrid='title']");
+      panel.querySelector("h2[data-attrid='title']");
     if (nameEl) {
-      data.businessName = nameEl.textContent.trim();
+      const clone = nameEl.cloneNode(true);
+      clone.querySelectorAll("a, button").forEach((el) => el.remove());
+      const nameText = clone.textContent.trim();
+      data.businessName = nameText || nameEl.childNodes[0]?.textContent?.trim() || "";
     }
 
-    // Phone
-    const phoneEl = panel.querySelector(
-      "[data-attrid*='phone'] .LrzXr, [data-attrid*='phone'] span.LrzXr"
-    );
-    if (phoneEl) {
-      data.phone = phoneEl.textContent.trim();
+    // Phone - try all data-attrid phone selectors, validate 10+ digits
+    const phoneSelectors = [
+      "[data-attrid*='phone'] .LrzXr",
+      "[data-attrid*='phone'] span",
+      "[data-dtype='d3ph'] .LrzXr",
+    ];
+    for (const sel of phoneSelectors) {
+      const el = panel.querySelector(sel);
+      if (el) {
+        const text = el.textContent.trim();
+        const digits = text.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          data.phone = text;
+          break;
+        }
+      }
     }
 
     // Address

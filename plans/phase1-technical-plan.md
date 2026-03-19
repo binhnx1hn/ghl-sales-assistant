@@ -1,3 +1,5 @@
+
+
 # Phase 1 Technical Plan: Click-to-Capture Chrome Extension + GHL Integration
 
 ## 1. Project Overview

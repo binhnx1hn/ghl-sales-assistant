@@ -2,7 +2,7 @@
 Tests for the Lead Capture API endpoints and GHL service.
 """
 
-import pytest
+import pytest # type: ignore
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import date
 

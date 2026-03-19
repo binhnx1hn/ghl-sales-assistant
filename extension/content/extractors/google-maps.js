@@ -48,7 +48,29 @@ const GoogleMapsExtractor = {
       listings.push(el);
     });
 
+    // Direct place page (e.g. /maps/place/...) — the whole place panel is the "listing"
+    if (listings.length === 0 && this._isDirectPlacePage()) {
+      const placePanel =
+        document.querySelector("div[role='main'] div.m6QErb") ||
+        document.querySelector("div[role='main']") ||
+        document.querySelector("#QA0Szd");
+      if (placePanel) {
+        listings.push(placePanel);
+      }
+    }
+
     return listings;
+  },
+
+  /**
+   * Check if we are on a direct place page (not search results).
+   * @returns {boolean}
+   */
+  _isDirectPlacePage() {
+    return (
+      window.location.pathname.includes("/maps/place/") &&
+      !!document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge")
+    );
   },
 
   /**

@@ -285,33 +285,39 @@ const ReviewPopup = {
       return;
     }
 
-    try {
-      // Send to background service worker via Chrome messaging
-      const response = await chrome.runtime.sendMessage({
-        action: "captureLead",
-        data: formData,
-      });
+    // OPTIMISTIC UI: Close popup immediately, send to GHL in background.
+    // This makes the extension feel instant (no waiting for GHL API ~1-2s).
+    // If GHL fails, show an error notification after the fact.
+    this.hide();
+    this._showToast(
+      `⏳ Saving ${formData.business_name} to GHL...`,
+      "info"
+    );
 
-      if (response && response.success) {
-        this.hide();
-        this._showToast(
-          `✅ ${response.is_new ? "New lead" : "Lead updated"}: ${formData.business_name}`,
-          "success"
-        );
-      } else {
-        this._showFormError(
-          response?.error || "Failed to save lead. Please try again."
-        );
-        saveText.style.display = "inline";
-        saveLoading.style.display = "none";
-        saveBtn.disabled = false;
+    // Fire and don't await - background handles it
+    chrome.runtime.sendMessage(
+      { action: "captureLead", data: formData },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          this._showToast(
+            `❌ Failed to save: ${chrome.runtime.lastError.message}`,
+            "error"
+          );
+          return;
+        }
+        if (response && response.success) {
+          this._showToast(
+            `✅ ${response.is_new ? "New lead" : "Lead updated"}: ${formData.business_name}`,
+            "success"
+          );
+        } else {
+          this._showToast(
+            `❌ Error: ${response?.error || "Failed to save lead"}`,
+            "error"
+          );
+        }
       }
-    } catch (error) {
-      this._showFormError(`Error: ${error.message}`);
-      saveText.style.display = "inline";
-      saveLoading.style.display = "none";
-      saveBtn.disabled = false;
-    }
+    );
   },
 
   /**
@@ -365,20 +371,30 @@ const ReviewPopup = {
 
   /**
    * Show a toast notification on the page.
+   * Info toasts auto-dismiss after 1.5s (they're transient "saving..." messages).
+   * Success/error toasts stay for 3s.
    * @param {string} message
    * @param {string} type - "success" or "error"
    * @private
    */
   _showToast(message, type = "success") {
+    // Remove any existing info toast when new toast arrives
+    const existingInfo = document.querySelector(
+      `.${GHL_ASSISTANT.CSS_PREFIX}-toast-info`
+    );
+    if (existingInfo) existingInfo.remove();
+
     const toast = document.createElement("div");
     toast.className = `${GHL_ASSISTANT.CSS_PREFIX}-toast ${GHL_ASSISTANT.CSS_PREFIX}-toast-${type}`;
     toast.textContent = message;
     document.body.appendChild(toast);
 
+    // Info toasts disappear faster (they're just "saving..." indicators)
+    const duration = type === "info" ? 1500 : 3000;
     setTimeout(() => {
       toast.classList.add(`${GHL_ASSISTANT.CSS_PREFIX}-toast-fade`);
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, duration);
   },
 
   /**

@@ -355,6 +355,12 @@
   color: #ffffff !important;
 }
 
+/* Info toast - shown while GHL request is in-flight (optimistic UI) */
+.ghl-sa-toast-info {
+  background: #2563EB !important;
+  color: #ffffff !important;
+}
+
 .ghl-sa-toast-fade {
   animation: ghl-sa-fade-out 0.3s ease forwards !important;
 }

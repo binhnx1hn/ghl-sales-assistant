@@ -25,7 +25,33 @@
       FloatingButton.init();
       attachListingListeners();
       observeDOMChanges();
-    }, 1000);
+
+      // Auto-show floating button on direct Google Maps place pages
+      autoShowOnPlacePage();
+    }, 1500);
+  }
+
+  /**
+   * On direct Google Maps place pages (e.g. /maps/place/Business+Name),
+   * there are no search result items to hover. Auto-show the floating
+   * button anchored to the place panel.
+   */
+  function autoShowOnPlacePage() {
+    if (!GoogleMapsExtractor.isMatch()) return;
+    if (!window.location.pathname.includes("/maps/place/")) return;
+
+    const nameEl = document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge");
+    if (!nameEl) return;
+
+    // Find the place panel to anchor the button
+    const placePanel =
+      document.querySelector("div[role='main'] div.m6QErb") ||
+      document.querySelector("div[role='main']") ||
+      document.querySelector("#QA0Szd");
+
+    if (placePanel) {
+      FloatingButton.show(placePanel);
+    }
   }
 
   /**
@@ -56,6 +82,13 @@
       });
 
       listing.addEventListener("mouseleave", () => {
+        // Don't auto-hide on direct place pages (button is permanently shown)
+        if (
+          window.location.pathname.includes("/maps/place/") &&
+          GoogleMapsExtractor.isMatch()
+        ) {
+          return;
+        }
         hideTimeout = setTimeout(() => {
           FloatingButton.hide();
         }, 800);
@@ -119,6 +152,13 @@
       e.target.closest &&
       e.target.closest(`#${GHL_ASSISTANT.CSS_PREFIX}-floating-btn`)
     ) {
+      // Don't auto-hide on direct place pages
+      if (
+        window.location.pathname.includes("/maps/place/") &&
+        GoogleMapsExtractor.isMatch()
+      ) {
+        return;
+      }
       hideTimeout = setTimeout(() => {
         FloatingButton.hide();
       }, 400);
