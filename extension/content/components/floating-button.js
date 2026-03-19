@@ -48,16 +48,40 @@ const FloatingButton = {
       window.location.pathname.includes("/maps/place/") &&
       !!document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge");
 
+    // Check if this is a Yelp business detail page
+    const isYelpBizPage =
+      window.location.hostname.includes("yelp.com") &&
+      window.location.pathname.startsWith("/biz/");
+
     this._button.style.position = "fixed";
     this._button.style.zIndex = "2147483647";
     this._button.style.display = "flex";
 
     if (isDirectPlacePage) {
-      // On direct place pages, show button at a fixed prominent position
-      // (top-right area, always visible)
-      this._button.style.top = "80px";
-      this._button.style.left = "auto";
+      // On direct place pages, position adjacent to the business info panel
+      // so the button is contextually associated with the business being viewed
+      const panelRect = element.getBoundingClientRect();
+      const btnWidth = 150; // approximate button width with text + padding
+
+      if (panelRect.width > 0) {
+        // Place just to the right of the panel, near the top
+        const leftPos = Math.min(panelRect.right + 12, window.innerWidth - btnWidth);
+        const topPos = Math.max(panelRect.top + 10, 10);
+        this._button.style.top = `${topPos}px`;
+        this._button.style.left = `${leftPos}px`;
+        this._button.style.right = "auto";
+      } else {
+        // Fallback: position next to typical panel width (~408px)
+        this._button.style.top = "80px";
+        this._button.style.left = "420px";
+        this._button.style.right = "auto";
+      }
+    } else if (isYelpBizPage) {
+      // On Yelp biz detail pages, position near top-right of business content
+      const panelRect = element.getBoundingClientRect();
+      this._button.style.top = `${Math.max(panelRect.top + 10, 80)}px`;
       this._button.style.right = "20px";
+      this._button.style.left = "auto";
     } else {
       // On search results, position near the hovered listing
       const rect = element.getBoundingClientRect();

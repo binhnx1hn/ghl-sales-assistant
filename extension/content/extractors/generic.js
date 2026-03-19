@@ -58,6 +58,24 @@ const GenericExtractor = {
       document
         .querySelectorAll("[data-testid='serp-ia-card'], .container__09f24__FeTO6")
         .forEach((el) => listings.push(el));
+
+      // Yelp business detail page (/biz/...) — no search cards present,
+      // so push the main content container as a single "listing"
+      if (listings.length === 0 && window.location.pathname.startsWith("/biz/")) {
+        const bizContainer =
+          document.querySelector("main") ||
+          document.querySelector("#wrap") ||
+          document.querySelector(".biz-page-header");
+        if (!bizContainer) {
+          // Fallback: use the parent of the business name heading
+          const h1 = document.querySelector("h1");
+          if (h1 && h1.parentElement) {
+            listings.push(h1.parentElement);
+          }
+        } else {
+          listings.push(bizContainer);
+        }
+      }
     }
 
     // Yellow Pages listings

@@ -28,6 +28,9 @@
 
       // Auto-show floating button on direct Google Maps place pages
       autoShowOnPlacePage();
+
+      // Auto-show floating button on Yelp business detail pages
+      autoShowOnYelpBizPage();
     }, 1500);
   }
 
@@ -52,6 +55,32 @@
     if (placePanel) {
       FloatingButton.show(placePanel);
     }
+  }
+
+  /**
+   * On Yelp business detail pages (e.g. /biz/business-name),
+   * there are no search result cards to hover. Auto-show the floating
+   * button anchored to the main content area.
+   */
+  function autoShowOnYelpBizPage() {
+    if (!window.location.hostname.includes("yelp.com")) return;
+    if (!window.location.pathname.startsWith("/biz/")) return;
+
+    const contentArea =
+      document.querySelector("main") ||
+      document.querySelector("#wrap") ||
+      document.querySelector(".biz-page-header");
+
+    if (!contentArea) {
+      // Fallback: use the parent of the business name heading
+      const h1 = document.querySelector("h1");
+      if (h1 && h1.parentElement) {
+        FloatingButton.show(h1.parentElement);
+      }
+      return;
+    }
+
+    FloatingButton.show(contentArea);
   }
 
   /**
@@ -82,10 +111,12 @@
       });
 
       listing.addEventListener("mouseleave", () => {
-        // Don't auto-hide on direct place pages (button is permanently shown)
+        // Don't auto-hide on direct place pages or Yelp biz pages (button is permanently shown)
         if (
-          window.location.pathname.includes("/maps/place/") &&
-          GoogleMapsExtractor.isMatch()
+          (window.location.pathname.includes("/maps/place/") &&
+            GoogleMapsExtractor.isMatch()) ||
+          (window.location.hostname.includes("yelp.com") &&
+            window.location.pathname.startsWith("/biz/"))
         ) {
           return;
         }
@@ -152,10 +183,12 @@
       e.target.closest &&
       e.target.closest(`#${GHL_ASSISTANT.CSS_PREFIX}-floating-btn`)
     ) {
-      // Don't auto-hide on direct place pages
+      // Don't auto-hide on direct place pages or Yelp biz pages
       if (
-        window.location.pathname.includes("/maps/place/") &&
-        GoogleMapsExtractor.isMatch()
+        (window.location.pathname.includes("/maps/place/") &&
+          GoogleMapsExtractor.isMatch()) ||
+        (window.location.hostname.includes("yelp.com") &&
+          window.location.pathname.startsWith("/biz/"))
       ) {
         return;
       }
