@@ -30,6 +30,9 @@ const ReviewPopup = {
         this._overlay?.remove();
         this._overlay = null;
         this._popup = null;
+        // Restore the floating button if user opened the popup from it.
+        // EN: Keep UX consistent: user closes popup then can click again.
+        FloatingButton?.onPopupClosed?.();
       }, 200);
     }
   },

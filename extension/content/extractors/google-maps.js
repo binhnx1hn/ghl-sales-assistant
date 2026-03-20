@@ -124,6 +124,11 @@ const GoogleMapsExtractor = {
       "[data-item-id] .Io6YTe, button[data-item-id] .rogA2c"
     );
 
+    // On some Google Maps layouts, `oloc*` can contain a plus code like
+    // "R365+JQ ...", which is NOT the street address we want in GHL.
+    // We capture it as a fallback, but we prefer a real street address.
+    let plusCodeCandidate = "";
+
     infoItems.forEach((item) => {
       const parentButton = item.closest("[data-item-id]");
       if (!parentButton) return;
@@ -131,15 +136,40 @@ const GoogleMapsExtractor = {
       const itemId = parentButton.getAttribute("data-item-id") || "";
       const text = item.textContent.trim();
 
+      const looksLikePlusCode = this._looksLikePlusCode(text);
+      const looksLikeStreetAddress = this._looksLikeStreetAddress(text);
+
       if (itemId.includes("address") || itemId.startsWith("oloc")) {
-        data.address = text;
-        const parts = this._parseCityState(text);
-        data.city = parts.city;
-        data.state = parts.state;
+        // Prefer a street address; never overwrite with plus code if we can
+        // find street address later in the iteration.
+        if (looksLikeStreetAddress) {
+          data.address = text;
+          const parts = this._parseCityState(text);
+          data.city = parts.city;
+          data.state = parts.state;
+          return;
+        }
+
+        // Store plus code as fallback only.
+        if (looksLikePlusCode) {
+          if (!plusCodeCandidate) plusCodeCandidate = text;
+          return;
+        }
+
+        // If we get a non-plus-code value but it still doesn't look like a
+        // street address, ignore it to avoid corrupting address with
+        // partials like "Anaheim, California, USA".
       } else if (itemId.includes("phone") || itemId.startsWith("phone")) {
         data.phone = text;
       }
     });
+
+    if (!data.address && plusCodeCandidate) {
+      data.address = plusCodeCandidate;
+      const parts = this._parseCityState(plusCodeCandidate);
+      data.city = parts.city;
+      data.state = parts.state;
+    }
 
     // Alternative phone extraction
     if (!data.phone) {
@@ -278,5 +308,38 @@ const GoogleMapsExtractor = {
     }
 
     return { city: "", state: "" };
+  },
+
+  /**
+   * Basic heuristic: Open Location Code (plus code) often looks like
+   * "R365+JQ" or "9F5R+8M" and should not be used as a street address.
+   * @param {string} text
+   * @returns {boolean}
+   */
+  _looksLikePlusCode(text) {
+    if (!text) return false;
+    // Example: "R365+JQ" (4+2 chars around '+'), sometimes lowercased.
+    return /\b[A-Z0-9]{3,4}\+[A-Z0-9]{2,4}\b/i.test(text);
+  },
+
+  /**
+   * Basic heuristic to detect a "real" US street address.
+   * We want to avoid saving plus codes or partial locality strings.
+   * @param {string} text
+   * @returns {boolean}
+   */
+  _looksLikeStreetAddress(text) {
+    if (!text) return false;
+    const t = String(text).replace(/\s+/g, " ").trim();
+    if (!t) return false;
+    if (this._looksLikePlusCode(t)) return false;
+
+    // Typical: "1440 S Euclid St, Anaheim, CA 92802"
+    const hasHouseNumber = /^\d{1,6}\b/.test(t);
+    const hasStreetAbbrev =
+      /\b(St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Ter|Terrace)\b/i.test(t);
+    const hasStateZip = /,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?\b/.test(t);
+
+    return (hasHouseNumber && hasStreetAbbrev) || hasStateZip;
   },
 };
