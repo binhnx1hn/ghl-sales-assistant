@@ -8,7 +8,7 @@ contact management, tags, notes, and task creation.
 import httpx
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -245,11 +245,15 @@ class GHLService:
     async def get_tags(self) -> List[Dict[str, Any]]:
         """Get all available tags for the location.
 
+        Uses GET /locations/{locationId}/tags (GHL API v2 2021-07-28).
+        Requires scope: locations/tags.readonly or locations/tags.write.
+
         Returns:
             List of tag objects with id and name
         """
-        params = {"locationId": self.location_id}
-        result = await self._request("GET", "/tags/", params=params)
+        result = await self._request(
+            "GET", f"/locations/{self.location_id}/tags"
+        )
         return result.get("tags", [])
 
     # ─── Note Operations ─────────────────────────────────────────────
@@ -295,9 +299,12 @@ class GHLService:
         Returns:
             Created task data
         """
+        # Use noon UTC for the chosen calendar day so GHL/local UI does not show
+        # the previous calendar day when midnight UTC is converted to US timezones.
+        due_dt = datetime.combine(due_date, time(12, 0, 0), tzinfo=timezone.utc)
         payload = {
             "title": title,
-            "dueDate": datetime.combine(due_date, datetime.min.time()).isoformat() + "Z",
+            "dueDate": due_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "completed": False,
             # NOTE: GHL Tasks API does NOT accept "description" field - omit it
         }

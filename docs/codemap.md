@@ -85,7 +85,7 @@ URL matched by manifest.json
 
 | File | Purpose |
 |------|---------|
-| [`ghl_service.py`](../backend/app/services/ghl_service.py) | HTTP client for GoHighLevel API |
+| [`ghl_service.py`](../backend/app/services/ghl_service.py) | HTTP client for GoHighLevel API v2 (2021-07-28). Endpoints: `/contacts/upsert`, `/contacts/{id}/tags`, `/locations/{id}/tags`, `/locations/{id}/customFields`, `/contacts/{id}/notes`, `/contacts/{id}/tasks`. |
 | [`lead_service.py`](../backend/app/services/lead_service.py) | Lead business logic layer |
 
 ### Utils (`backend/app/utils/`)

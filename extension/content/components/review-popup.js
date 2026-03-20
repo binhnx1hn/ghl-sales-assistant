@@ -50,10 +50,12 @@ const ReviewPopup = {
       if (e.target === this._overlay) this.hide();
     });
 
-    // Calculate default follow-up date (3 days from now)
+    // Default follow-up: +3 calendar days in the user's local timezone.
+    // Do not use toISOString() for the date part — it is UTC and shifts the
+    // calendar day ahead of UTC (e.g. Asia) or can mismatch the date picker.
     const defaultFollowUp = new Date();
     defaultFollowUp.setDate(defaultFollowUp.getDate() + 3);
-    const followUpStr = defaultFollowUp.toISOString().split("T")[0];
+    const followUpStr = this._formatLocalDateYmd(defaultFollowUp);
 
     // Build tag checkboxes
     const tagCheckboxes = GHL_ASSISTANT.TAG_OPTIONS.map((tag) => {
@@ -100,7 +102,7 @@ const ReviewPopup = {
           <input type="text" id="${GHL_ASSISTANT.CSS_PREFIX}-address" value="${this._escapeHtml(data.address || "")}" />
         </div>
 
-        <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-row">
+        <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-row" style="display:none !important;">
           <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-group ${GHL_ASSISTANT.CSS_PREFIX}-form-half">
             <label>City</label>
             <input type="text" id="${GHL_ASSISTANT.CSS_PREFIX}-city" value="${this._escapeHtml(data.city || "")}" />
@@ -116,7 +118,7 @@ const ReviewPopup = {
           <textarea id="${GHL_ASSISTANT.CSS_PREFIX}-note" rows="3" placeholder="Add a note about this lead...">${this._escapeHtml(data.note || "")}</textarea>
         </div>
 
-        <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-group">
+        <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-group" style="display:none !important;">
           <label>Follow-up Date</label>
           <input type="date" id="${GHL_ASSISTANT.CSS_PREFIX}-followup" value="${data.followUpDate || followUpStr}" />
         </div>
@@ -435,5 +437,18 @@ const ReviewPopup = {
     } catch {
       return url.length > 50 ? url.substring(0, 50) + "..." : url;
     }
+  },
+
+  /**
+   * Format a Date as YYYY-MM-DD in local timezone (for type="date" inputs).
+   * @param {Date} d
+   * @returns {string}
+   * @private
+   */
+  _formatLocalDateYmd(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   },
 };
