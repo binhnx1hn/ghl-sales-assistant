@@ -22,16 +22,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function loadSettings() {
   const settings = await StorageHelper.getMultiple({
     [GHL_ASSISTANT.STORAGE_KEYS.API_URL]: GHL_ASSISTANT.API_BASE_URL,
-    [GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_TAGS]: GHL_ASSISTANT.DEFAULT_TAGS.join(", "),
     [GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_MARKET]: "",
   });
 
   document.getElementById("api-url").value =
     settings[GHL_ASSISTANT.STORAGE_KEYS.API_URL];
-  document.getElementById("default-tags").value =
-    typeof settings[GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_TAGS] === "string"
-      ? settings[GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_TAGS]
-      : settings[GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_TAGS].join(", ");
   document.getElementById("default-market").value =
     settings[GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_MARKET];
 }
@@ -41,11 +36,9 @@ async function loadSettings() {
  */
 async function saveSettings() {
   const apiUrl = document.getElementById("api-url").value.trim();
-  const defaultTags = document.getElementById("default-tags").value.trim();
   const defaultMarket = document.getElementById("default-market").value.trim();
 
   await StorageHelper.set(GHL_ASSISTANT.STORAGE_KEYS.API_URL, apiUrl || GHL_ASSISTANT.API_BASE_URL);
-  await StorageHelper.set(GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_TAGS, defaultTags);
   await StorageHelper.set(GHL_ASSISTANT.STORAGE_KEYS.DEFAULT_MARKET, defaultMarket);
 
   const result = document.getElementById("save-result");

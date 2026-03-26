@@ -60,16 +60,17 @@ const ReviewPopup = {
     defaultFollowUp.setDate(defaultFollowUp.getDate() + 3);
     const followUpStr = this._formatLocalDateYmd(defaultFollowUp);
 
-    // Build tag checkboxes
-    const tagCheckboxes = GHL_ASSISTANT.TAG_OPTIONS.map((tag) => {
-      const isChecked =
-        (data.tags && data.tags.includes(tag)) ||
-        GHL_ASSISTANT.DEFAULT_TAGS.includes(tag) ||
-        (tag === "Nursing Home" && (data.category || "").toLowerCase().includes("nursing"));
+    // Build industry radio buttons (single selection)
+    const categoryLower = (data.category || "").toLowerCase();
+    const autoIndustry = GHL_ASSISTANT.INDUSTRY_OPTIONS.find((opt) =>
+      categoryLower.includes(opt.toLowerCase().split("/")[0].trim())
+    ) || "";
+    const industryRadios = GHL_ASSISTANT.INDUSTRY_OPTIONS.map((opt) => {
+      const isChecked = opt === autoIndustry;
       return `
         <label class="${GHL_ASSISTANT.CSS_PREFIX}-tag-label">
-          <input type="checkbox" value="${tag}" ${isChecked ? "checked" : ""} />
-          <span>${tag}</span>
+          <input type="radio" name="${GHL_ASSISTANT.CSS_PREFIX}-industry" value="${opt}" ${isChecked ? "checked" : ""} />
+          <span>${opt}</span>
         </label>
       `;
     }).join("");
@@ -127,13 +128,9 @@ const ReviewPopup = {
         </div>
 
         <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-group">
-          <label>Tags</label>
+          <label>Industry</label>
           <div class="${GHL_ASSISTANT.CSS_PREFIX}-tags-container">
-            ${tagCheckboxes}
-          </div>
-          <div class="${GHL_ASSISTANT.CSS_PREFIX}-custom-tag">
-            <input type="text" id="${GHL_ASSISTANT.CSS_PREFIX}-custom-tag-input" placeholder="Add custom tag..." />
-            <button id="${GHL_ASSISTANT.CSS_PREFIX}-add-tag-btn" type="button">+</button>
+            ${industryRadios}
           </div>
         </div>
 
@@ -178,27 +175,6 @@ const ReviewPopup = {
       .querySelector(`.${GHL_ASSISTANT.CSS_PREFIX}-btn-save`)
       .addEventListener("click", () => this._onSave());
 
-    // Custom tag add button
-    const addTagBtn = this._popup.querySelector(
-      `#${GHL_ASSISTANT.CSS_PREFIX}-add-tag-btn`
-    );
-    const customTagInput = this._popup.querySelector(
-      `#${GHL_ASSISTANT.CSS_PREFIX}-custom-tag-input`
-    );
-
-    addTagBtn.addEventListener("click", () => {
-      this._addCustomTag(customTagInput.value.trim());
-      customTagInput.value = "";
-    });
-
-    customTagInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        this._addCustomTag(customTagInput.value.trim());
-        customTagInput.value = "";
-      }
-    });
-
     // ESC key to close
     document.addEventListener("keydown", this._escHandler);
   },
@@ -213,34 +189,6 @@ const ReviewPopup = {
       ReviewPopup.hide();
       document.removeEventListener("keydown", ReviewPopup._escHandler);
     }
-  },
-
-  /**
-   * Add a custom tag to the tags container.
-   * @param {string} tagName
-   * @private
-   */
-  _addCustomTag(tagName) {
-    if (!tagName) return;
-
-    const container = this._popup.querySelector(
-      `.${GHL_ASSISTANT.CSS_PREFIX}-tags-container`
-    );
-
-    // Check if tag already exists
-    const existing = container.querySelector(`input[value="${tagName}"]`);
-    if (existing) {
-      existing.checked = true;
-      return;
-    }
-
-    const label = document.createElement("label");
-    label.className = `${GHL_ASSISTANT.CSS_PREFIX}-tag-label`;
-    label.innerHTML = `
-      <input type="checkbox" value="${this._escapeHtml(tagName)}" checked />
-      <span>${this._escapeHtml(tagName)}</span>
-    `;
-    container.appendChild(label);
   },
 
   /**
@@ -278,7 +226,7 @@ const ReviewPopup = {
       category: this._currentData?.category || "",
       note: this._getVal("note"),
       follow_up_date: this._getVal("followup") || null,
-      tags: this._getSelectedTags(),
+      industry: this._getSelectedIndustry(),
     };
 
     // Validate required fields
@@ -337,15 +285,15 @@ const ReviewPopup = {
   },
 
   /**
-   * Get selected tags from checkboxes.
-   * @returns {Array<string>}
+   * Get the selected industry from radio buttons.
+   * @returns {string}
    * @private
    */
-  _getSelectedTags() {
-    const checkboxes = this._popup.querySelectorAll(
-      `.${GHL_ASSISTANT.CSS_PREFIX}-tags-container input[type="checkbox"]:checked`
+  _getSelectedIndustry() {
+    const checked = this._popup.querySelector(
+      `input[name="${GHL_ASSISTANT.CSS_PREFIX}-industry"]:checked`
     );
-    return Array.from(checkboxes).map((cb) => cb.value);
+    return checked ? checked.value : "";
   },
 
   /**

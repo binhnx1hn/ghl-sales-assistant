@@ -16,20 +16,16 @@ const GHL_ASSISTANT = {
     OTHER: "other",
   },
 
-  // Default tags for new leads
-  DEFAULT_TAGS: ["New Lead"],
-
-  // Predefined tag options for quick selection
-  TAG_OPTIONS: [
-    "New Lead",
-    "Nursing Home",
-    "Assisted Living",
-    "Senior Care",
-    "Called",
-    "Need Email",
-    "Follow Up",
-    "Hot Lead",
-    "Not Interested",
+  // Industry options for lead classification
+  INDUSTRY_OPTIONS: [
+    "Restaurants",
+    "Adult Day Care",
+    "Care Facilities",
+    "Manufacturers",
+    "Medical Offices",
+    "Beauty",
+    "Nursing Homes",
+    "Transportation/NEMT",
   ],
 
   // CSS class prefix to avoid conflicts with page styles
@@ -38,7 +34,6 @@ const GHL_ASSISTANT = {
   // Storage keys
   STORAGE_KEYS: {
     API_URL: "ghl_api_url",
-    DEFAULT_TAGS: "ghl_default_tags",
     DEFAULT_MARKET: "ghl_default_market",
     LAST_CAPTURED: "ghl_last_captured",
   },

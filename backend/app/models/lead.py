@@ -27,6 +27,7 @@ class LeadCaptureRequest(BaseModel):
     category: Optional[str] = Field(None, description="Business category (e.g. Nursing Home)")
     note: Optional[str] = Field(None, description="Quick note added by user")
     follow_up_date: Optional[date] = Field(None, description="Follow-up date for the task")
+    industry: Optional[str] = Field(None, description="Industry type selected by user (e.g. Restaurants, Medical Offices)")
     tags: List[str] = Field(default_factory=list, description="Tags to apply to the contact")
 
     model_config = {

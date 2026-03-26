@@ -161,6 +161,8 @@ class LeadService:
             contact["city"] = lead.city
         if lead.state:
             contact["state"] = lead.state
+        if lead.industry:
+            contact["industry"] = lead.industry
 
         # Store additional data in custom fields
         custom_fields = []
