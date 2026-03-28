@@ -117,45 +117,59 @@ class LeadService:
         )
 
     def _clean_phone(self, phone: str) -> Optional[str]:
-        """Clean and validate a phone number for GHL.
+        """Clean and validate a phone number for GHL (E.164 format).
 
-        GHL requires E.164 format or standard US format.
-        Returns None if phone is invalid (too short, partial numbers, etc.)
+        Handles Vietnamese numbers (0xxxxxxxxx → +84xxxxxxxxx),
+        US numbers (10 digits → +1xxxxxxxxxx), and international numbers.
+        Returns None if phone is invalid (too short, etc.)
 
         Args:
             phone: Raw phone string from browser extraction
 
         Returns:
-            Cleaned phone string or None if invalid
+            E.164 formatted phone string or None if invalid
         """
         if not phone:
             return None
 
-        # Strip everything except digits and leading +
         import re
+
+        # Strip everything except digits and leading +
         digits_only = re.sub(r"[^\d+]", "", phone)
+        clean_digits = re.sub(r"\D", "", digits_only)
+        digit_count = len(clean_digits)
 
-        # Remove leading + for digit count check
-        digit_count = len(re.sub(r"\D", "", digits_only))
-
-        # Must have at least 10 digits (US number without country code)
-        if digit_count < 10:
+        # Must have at least 8 digits to be a valid phone number
+        if digit_count < 8:
             return None
 
-        # If it looks like a US number (10 digits), add +1 country code
-        if digit_count == 10:
-            clean_digits = re.sub(r"\D", "", digits_only)
-            return f"+1{clean_digits}"
-
-        # If 11 digits starting with 1, add +
-        if digit_count == 11 and digits_only.startswith("1"):
-            clean_digits = re.sub(r"\D", "", digits_only)
-            return f"+{clean_digits}"
-
-        # Otherwise return as-is if starts with +, or add + prefix
+        # Already has country code prefix (e.g. +84..., +1...)
         if digits_only.startswith("+"):
             return digits_only
-        return f"+{digits_only}"
+
+        # Vietnamese local number: starts with 0, 10 digits (e.g. 0976635533)
+        # → strip leading 0 and prepend +84
+        if digit_count == 10 and clean_digits.startswith("0"):
+            return f"+84{clean_digits[1:]}"
+
+        # Vietnamese number without leading 0, 9 digits (e.g. 976635533)
+        if digit_count == 9 and not clean_digits.startswith("1"):
+            return f"+84{clean_digits}"
+
+        # US/Canada number: exactly 10 digits not starting with 0
+        if digit_count == 10:
+            return f"+1{clean_digits}"
+
+        # 11-digit number starting with 1 (US with country code, no +)
+        if digit_count == 11 and clean_digits.startswith("1"):
+            return f"+{clean_digits}"
+
+        # Vietnamese 11-digit with country code 84 (e.g. 84976635533)
+        if digit_count == 11 and clean_digits.startswith("84"):
+            return f"+{clean_digits}"
+
+        # Fallback: prepend + for other international formats
+        return f"+{clean_digits}"
 
     def _map_to_ghl_contact(self, lead: LeadCaptureRequest) -> dict:
         """Map lead capture data to GoHighLevel contact format.
@@ -184,11 +198,11 @@ class LeadService:
             contact["city"] = lead.city
         if lead.state:
             contact["state"] = lead.state
-        # NOTE: GHL does not have a standard "industry" contact property.
-        # Industry is applied as a tag instead (see capture_lead tag pipeline).
 
-        # Store additional data in custom fields
+        # Store additional data in custom fields (use "key" for field lookup by key name)
         custom_fields = []
+        if lead.industry:
+            custom_fields.append({"key": "industry", "value": lead.industry})
         if lead.source_url:
             custom_fields.append({"key": "source_url", "value": lead.source_url})
         if lead.source_type:
