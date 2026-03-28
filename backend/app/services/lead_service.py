@@ -35,7 +35,11 @@ class LeadService:
         Returns:
             LeadCaptureResponse with results of the capture operation
         """
-        # Step 1: Map lead data to GHL contact format
+        # Step 1: Merge industry into tags (GHL has no native "industry" field)
+        if lead.industry and lead.industry not in lead.tags:
+            lead.tags = [lead.industry] + lead.tags
+
+        # Step 2 (was 1): Map lead data to GHL contact format
         contact_data = self._map_to_ghl_contact(lead)
 
         # Step 2: Create or update contact (must complete first for contact_id)
@@ -161,8 +165,8 @@ class LeadService:
             contact["city"] = lead.city
         if lead.state:
             contact["state"] = lead.state
-        if lead.industry:
-            contact["industry"] = lead.industry
+        # NOTE: GHL does not have a standard "industry" contact property.
+        # Industry is applied as a tag instead (see capture_lead tag pipeline).
 
         # Store additional data in custom fields
         custom_fields = []

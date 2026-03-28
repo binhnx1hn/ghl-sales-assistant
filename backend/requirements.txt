@@ -6,3 +6,5 @@ pydantic-settings==2.5.2
 python-dotenv==1.0.1
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# Phase 2A — AI Social Research + Email Drafter
+openai==1.30.0

@@ -119,7 +119,24 @@ const GoogleMapsExtractor = {
       data.rating = ratingEl.textContent.trim();
     }
 
-    // Address - look for the address button/link in info section
+    // Address - first try the explicit data-item-id="address" button (works
+    // for all locales including Vietnamese, Japanese, etc.)
+    const addressBtn = document.querySelector(
+      "button[data-item-id='address'], [data-item-id='address']"
+    );
+    if (addressBtn) {
+      const addrEl = addressBtn.querySelector(".Io6YTe, .rogA2c div");
+      const addrText = (addrEl || addressBtn).textContent.trim();
+      if (addrText && !this._looksLikePlusCode(addrText)) {
+        data.address = addrText;
+        const parts = this._parseCityState(addrText);
+        data.city = parts.city;
+        data.state = parts.state;
+      }
+    }
+
+    // Fallback: scan all info items for address / phone (covers older layouts
+    // and oloc* plus-code containers).
     const infoItems = document.querySelectorAll(
       "[data-item-id] .Io6YTe, button[data-item-id] .rogA2c"
     );
@@ -140,8 +157,9 @@ const GoogleMapsExtractor = {
       const looksLikeStreetAddress = this._looksLikeStreetAddress(text);
 
       if (itemId.includes("address") || itemId.startsWith("oloc")) {
-        // Prefer a street address; never overwrite with plus code if we can
-        // find street address later in the iteration.
+        // If we already have a good address from the explicit button, skip.
+        if (data.address) return;
+
         if (looksLikeStreetAddress) {
           data.address = text;
           const parts = this._parseCityState(text);
@@ -155,10 +173,6 @@ const GoogleMapsExtractor = {
           if (!plusCodeCandidate) plusCodeCandidate = text;
           return;
         }
-
-        // If we get a non-plus-code value but it still doesn't look like a
-        // street address, ignore it to avoid corrupting address with
-        // partials like "Anaheim, California, USA".
       } else if (itemId.includes("phone") || itemId.startsWith("phone")) {
         data.phone = text;
       }

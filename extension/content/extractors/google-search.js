@@ -134,6 +134,7 @@ const GoogleSearchExtractor = {
       city: "",
       state: "",
       rating: "",
+      socialLinks: { linkedin: "", facebook: "", instagram: "", tiktok: "" },
       sourceUrl: window.location.href,
       sourceType: GHL_ASSISTANT.SOURCE_TYPES.GOOGLE_SEARCH,
     };
@@ -218,8 +219,62 @@ const GoogleSearchExtractor = {
       data.rating = ratingEl.textContent.trim();
     }
 
+    // Social links — also check the full Knowledge Panel in case local pack
+    // card doesn't have them but the sidebar does.
+    const kpRoot = document.querySelector(".kp-wholepage, .knowledge-panel, .liYKde");
+    data.socialLinks = this._extractSocialLinks(kpRoot || container);
+
     // Only return if we got at least a business name
     return data.businessName ? data : null;
+  },
+
+  /**
+   * Extract social profile links directly from a DOM root element.
+   * Looks for anchor hrefs pointing to known social platforms.
+   * @param {HTMLElement} root
+   * @returns {{ linkedin: string, facebook: string, instagram: string, tiktok: string }}
+   * @private
+   */
+  _extractSocialLinks(root) {
+    const social = { linkedin: "", facebook: "", instagram: "", tiktok: "" };
+    if (!root) return social;
+
+    const anchors = Array.from(root.querySelectorAll("a[href]"));
+    for (const a of anchors) {
+      const href = a.href || "";
+      try {
+        const url = new URL(href);
+        const host = url.hostname.toLowerCase();
+        const path = url.pathname || "";
+
+        if (!social.linkedin && host.includes("linkedin.com")) {
+          // Accept only company or person profile pages
+          if (/^\/(company|in)\/[^/]+\/?$/.test(path)) {
+            social.linkedin = href;
+          }
+        } else if (!social.facebook && host.includes("facebook.com")) {
+          // Reject photo, video, event, location, explore, story pages
+          if (!/\/(photo|video|events|pages|groups|stories|explore|permalink|media)/.test(path) &&
+              path !== "/" && path.length > 1) {
+            social.facebook = href;
+          }
+        } else if (!social.instagram && host.includes("instagram.com")) {
+          // Reject explore, p/, reel/, stories/ — accept only /@handle or /handle/
+          if (!/\/(explore|p\/|reel\/|stories\/|tv\/)/.test(path) &&
+              path !== "/" && path.length > 1) {
+            social.instagram = href;
+          }
+        } else if (!social.tiktok && host.includes("tiktok.com")) {
+          // Accept only profile pages: /@handle (no /video/ sub-path)
+          if (/^\/@[^/]+\/?$/.test(path)) {
+            social.tiktok = href;
+          }
+        }
+      } catch {
+        // ignore malformed URLs
+      }
+    }
+    return social;
   },
 
   /**
@@ -240,6 +295,7 @@ const GoogleSearchExtractor = {
       city: "",
       state: "",
       rating: "",
+      socialLinks: { linkedin: "", facebook: "", instagram: "", tiktok: "" },
       sourceUrl: window.location.href,
       sourceType: GHL_ASSISTANT.SOURCE_TYPES.GOOGLE_SEARCH,
     };
@@ -296,6 +352,9 @@ const GoogleSearchExtractor = {
     if (ratingEl) {
       data.rating = ratingEl.textContent.trim();
     }
+
+    // Social links - scrape directly from Knowledge Panel DOM (free, instant)
+    data.socialLinks = this._extractSocialLinks(panel);
 
     return data.businessName ? data : null;
   },

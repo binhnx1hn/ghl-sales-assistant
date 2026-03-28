@@ -10,6 +10,9 @@ const ReviewPopup = {
   _overlay: null,
   _popup: null,
   _currentData: null,
+  // Phase 2A: store last captured contact_id for enrichment/email drafting
+  _lastContactId: null,
+  _lastFormData: null,
 
   /**
    * Show the review popup with pre-filled data.
@@ -227,6 +230,8 @@ const ReviewPopup = {
       note: this._getVal("note"),
       follow_up_date: this._getVal("followup") || null,
       industry: this._getSelectedIndustry(),
+      // Social links pre-extracted from DOM (may be empty if not found on page)
+      socialLinks: this._currentData?.socialLinks || { linkedin: "", facebook: "", instagram: "", tiktok: "" },
     };
 
     // Validate required fields
@@ -274,6 +279,12 @@ const ReviewPopup = {
             `✅ ${response.is_new ? "New lead" : "Lead updated"}: ${formData.business_name}`,
             "success"
           );
+          // Phase 2A: Store contact_id and show enrichment panel
+          if (response.contact_id) {
+            this._lastContactId = response.contact_id;
+            this._lastFormData = formData;
+            this._showPhase2Panel(formData, response.contact_id);
+          }
         } else {
           this._showToast(
             `❌ Error: ${response?.error || "Failed to save lead"}`,
@@ -282,6 +293,247 @@ const ReviewPopup = {
         }
       }
     );
+  },
+
+  /**
+   * Phase 2A: Show the AI enrichment panel after successful lead save.
+   * Renders a floating panel with "Find Social Profiles" and "Draft Email" buttons.
+   *
+   * @param {Object} formData - The form data that was just saved
+   * @param {string} contactId - GHL contact ID returned from capture
+   * @private
+   */
+  _showPhase2Panel(formData, contactId) {
+    // Remove any existing Phase 2 panel
+    const existing = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-phase2-panel`);
+    if (existing) existing.remove();
+
+    // Check for pre-extracted social links from DOM
+    const preLinks = formData.socialLinks || { linkedin: "", facebook: "", instagram: "", tiktok: "" };
+    const preFound = Object.values(preLinks).filter(Boolean).length;
+    const hasPreLinks = preFound > 0;
+
+    const panel = document.createElement("div");
+    panel.id = `${GHL_ASSISTANT.CSS_PREFIX}-phase2-panel`;
+    panel.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      background: #1a1a2e;
+      border: 1px solid #4a4a8a;
+      border-radius: 12px;
+      padding: 16px;
+      z-index: 2147483646;
+      min-width: 280px;
+      max-width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+    `;
+
+    // Build pre-found social links summary for display
+    const preFoundLinks = [];
+    if (preLinks.linkedin) preFoundLinks.push(`<a href="${preLinks.linkedin}" target="_blank" style="color:#a78bfa;">LinkedIn</a>`);
+    if (preLinks.facebook) preFoundLinks.push(`<a href="${preLinks.facebook}" target="_blank" style="color:#60a5fa;">Facebook</a>`);
+    if (preLinks.instagram) preFoundLinks.push(`<a href="${preLinks.instagram}" target="_blank" style="color:#f472b6;">Instagram</a>`);
+    if (preLinks.tiktok) preFoundLinks.push(`<a href="${preLinks.tiktok}" target="_blank" style="color:#34d399;">TikTok</a>`);
+
+    const enrichBtnLabel = hasPreLinks
+      ? `<span>✅</span><div><div>${preFound} profile${preFound !== 1 ? "s" : ""} found on page</div><div style="font-size:11px; opacity:0.8; font-weight:400;">Click to search for more</div></div>`
+      : `<span>🔍</span><div><div>Find Social Profiles</div><div style="font-size:11px; opacity:0.8; font-weight:400;">LinkedIn · Facebook · Instagram · TikTok</div></div>`;
+
+    panel.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:600; color:#a78bfa;">
+          🤖 AI Actions for ${this._escapeHtml(formData.business_name || "")}
+        </div>
+        <button id="${GHL_ASSISTANT.CSS_PREFIX}-phase2-close"
+          style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;line-height:1;padding:0 4px;">
+          ×
+        </button>
+      </div>
+      ${hasPreLinks ? `<div style="margin-bottom:10px; font-size:12px; color:#9ca3af;">Found on page: ${preFoundLinks.join(" · ")}</div>` : ""}
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button id="${GHL_ASSISTANT.CSS_PREFIX}-btn-enrich"
+          style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; border-radius: 8px;
+            padding: 10px 14px; font-size: 13px; font-weight: 600;
+            cursor: pointer; text-align: left; display: flex;
+            align-items: center; gap: 8px; transition: opacity 0.2s;
+          ">
+          ${enrichBtnLabel}
+        </button>
+        <button id="${GHL_ASSISTANT.CSS_PREFIX}-btn-draft"
+          style="
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white; border: none; border-radius: 8px;
+            padding: 10px 14px; font-size: 13px; font-weight: 600;
+            cursor: pointer; text-align: left; display: flex;
+            align-items: center; gap: 8px; transition: opacity 0.2s;
+          ">
+          <span>✉️</span>
+          <div>
+            <div>Draft Email from LinkedIn</div>
+            <div style="font-size:11px; opacity:0.8; font-weight:400;">AI-personalized outreach email</div>
+          </div>
+        </button>
+      </div>
+      <div id="${GHL_ASSISTANT.CSS_PREFIX}-phase2-status" style="margin-top:10px; font-size:12px; color:#888; min-height:16px;"></div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // Auto-remove after 30 seconds
+    const autoRemoveTimer = setTimeout(() => panel.remove(), 30000);
+
+    // Close button handler
+    document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-phase2-close`)
+      .addEventListener("click", () => {
+        clearTimeout(autoRemoveTimer);
+        panel.remove();
+      });
+
+    // Pre-set linkedin_url on draft button if already found from DOM extraction
+    const draftBtnEl = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
+    if (draftBtnEl && preLinks.linkedin) {
+      draftBtnEl.dataset.linkedinUrl = preLinks.linkedin;
+    }
+
+    // Find Social Profiles handler
+    document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-enrich`)
+      .addEventListener("click", () => this._onEnrichLead(formData, contactId, panel, autoRemoveTimer));
+
+    // Draft Email handler
+    draftBtnEl.addEventListener("click", () => this._onDraftEmail(formData, contactId, panel, autoRemoveTimer));
+  },
+
+  /**
+   * Phase 2A: Handle "Find Social Profiles" button click.
+   * Calls the /leads/enrich endpoint and shows results in the panel.
+   *
+   * @param {Object} formData - Lead form data
+   * @param {string} contactId - GHL contact ID
+   * @param {HTMLElement} panel - The Phase 2 panel element
+   * @param {number} autoRemoveTimer - Timer ID for auto-remove
+   * @private
+   */
+  async _onEnrichLead(formData, contactId, panel, autoRemoveTimer) {
+    const enrichBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-enrich`);
+    const statusEl = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-phase2-status`);
+
+    enrichBtn.disabled = true;
+    enrichBtn.style.opacity = "0.6";
+    if (statusEl) statusEl.textContent = "🔍 Searching social profiles...";
+
+    try {
+      const result = await ApiClient.enrichLead(contactId, formData);
+
+      if (result.success) {
+        const count = result.profiles_count || 0;
+        const profiles = result.profiles_found || {};
+
+        // Build summary of found profiles
+        const found = [];
+        if (profiles.linkedin) found.push(`<a href="${profiles.linkedin}" target="_blank" style="color:#a78bfa;">LinkedIn</a>`);
+        if (profiles.facebook) found.push(`<a href="${profiles.facebook}" target="_blank" style="color:#60a5fa;">Facebook</a>`);
+        if (profiles.instagram) found.push(`<a href="${profiles.instagram}" target="_blank" style="color:#f472b6;">Instagram</a>`);
+        if (profiles.tiktok) found.push(`<a href="${profiles.tiktok}" target="_blank" style="color:#34d399;">TikTok</a>`);
+
+        enrichBtn.innerHTML = `<span>✅</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">${count > 0 ? "Saved to GHL contact" : "None found"}</div></div>`;
+
+        if (statusEl) {
+          statusEl.innerHTML = count > 0
+            ? `Found: ${found.join(" · ")}`
+            : "No public profiles found for this business.";
+        }
+
+        // Enable Draft Email button and pass LinkedIn URL if found
+        const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
+        if (draftBtn && profiles.linkedin) {
+          draftBtn.dataset.linkedinUrl = profiles.linkedin;
+        }
+      } else {
+        if (statusEl) statusEl.textContent = "⚠️ Search completed but no profiles found.";
+        enrichBtn.disabled = false;
+        enrichBtn.style.opacity = "1";
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `❌ Error: ${err.message}`;
+      enrichBtn.disabled = false;
+      enrichBtn.style.opacity = "1";
+    }
+
+    clearTimeout(autoRemoveTimer);
+  },
+
+  /**
+   * Phase 2A: Handle "Draft Email from LinkedIn" button click.
+   * Calls the /leads/draft-email endpoint and shows the draft in the panel.
+   *
+   * @param {Object} formData - Lead form data
+   * @param {string} contactId - GHL contact ID
+   * @param {HTMLElement} panel - The Phase 2 panel element
+   * @param {number} autoRemoveTimer - Timer ID for auto-remove
+   * @private
+   */
+  async _onDraftEmail(formData, contactId, panel, autoRemoveTimer) {
+    const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
+    const statusEl = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-phase2-status`);
+
+    // Get LinkedIn URL if previously found by enrichment
+    const linkedinUrl = draftBtn?.dataset?.linkedinUrl || null;
+
+    draftBtn.disabled = true;
+    draftBtn.style.opacity = "0.6";
+    if (statusEl) statusEl.textContent = "✉️ AI is drafting your email...";
+
+    try {
+      const result = await ApiClient.draftEmail(contactId, {
+        ...formData,
+        linkedin_url: linkedinUrl,
+      });
+
+      if (result.success && result.draft_email) {
+        const { subject, body } = result.draft_email;
+
+        draftBtn.innerHTML = `<span>✅</span><div><div>Email Draft Ready</div><div style="font-size:11px;opacity:0.8;">Saved to GHL Notes</div></div>`;
+
+        // Show a preview of the draft in an expandable section
+        const previewDiv = document.createElement("div");
+        previewDiv.style.cssText = `
+          margin-top: 10px;
+          background: rgba(255,255,255,0.05);
+          border-radius: 8px;
+          padding: 10px;
+          font-size: 12px;
+          line-height: 1.5;
+          max-height: 150px;
+          overflow-y: auto;
+          color: #d1d5db;
+        `;
+        previewDiv.innerHTML = `
+          <div style="color:#a78bfa; font-weight:600; margin-bottom:4px;">Subject: ${this._escapeHtml(subject)}</div>
+          <div style="white-space:pre-wrap;">${this._escapeHtml(body)}</div>
+        `;
+        panel.appendChild(previewDiv);
+
+        if (statusEl) statusEl.textContent = result.saved_as_note
+          ? "📋 Draft saved to GHL Notes — review before sending"
+          : "⚠️ Draft ready but could not save to GHL Notes";
+
+      } else {
+        if (statusEl) statusEl.textContent = "⚠️ Could not generate email draft.";
+        draftBtn.disabled = false;
+        draftBtn.style.opacity = "1";
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `❌ Error: ${err.message}`;
+      draftBtn.disabled = false;
+      draftBtn.style.opacity = "1";
+    }
+
+    clearTimeout(autoRemoveTimer);
   },
 
   /**

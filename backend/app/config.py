@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = True
 
+    # Phase 2A — AI & Search APIs
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    serper_api_key: str = ""
+    serper_base_url: str = "https://google.serper.dev"
+
+    # Phase 2A — Email drafter defaults (client can override per request)
+    default_sender_name: str = ""
+    default_sender_company: str = ""
+    default_pitch: str = ""
+
     @property
     def cors_origins(self) -> List[str]:
         """Parse allowed origins from comma-separated string."""

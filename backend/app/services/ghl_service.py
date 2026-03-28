@@ -326,3 +326,71 @@ class GHLService:
             "GET", f"/locations/{self.location_id}/customFields", params=params
         )
         return result.get("customFields", [])
+
+    async def update_custom_fields(
+        self, contact_id: str, custom_fields: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Update custom field values on a contact.
+
+        Each entry in custom_fields should be:
+            {"id": "<field_key_or_id>", "value": "<value>"}
+
+        GHL accepts both the field's key (e.g. "linkedin_url") and its UUID
+        as the "id" property. Using key names is preferred for readability.
+
+        Args:
+            contact_id: GHL contact ID
+            custom_fields: List of {"id": field_key, "value": field_value} dicts
+
+        Returns:
+            Updated contact data
+        """
+        if not custom_fields:
+            return {}
+
+        payload = {"customFields": custom_fields}
+        return await self._request(
+            "PUT", f"/contacts/{contact_id}", json_data=payload
+        )
+
+    async def update_social_profiles(
+        self,
+        contact_id: str,
+        linkedin: Optional[str] = None,
+        facebook: Optional[str] = None,
+        instagram: Optional[str] = None,
+        tiktok: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Convenience method: update social profile custom fields on a contact.
+
+        Only sends fields that have a non-None value, so partial updates are safe.
+
+        Args:
+            contact_id: GHL contact ID
+            linkedin: LinkedIn URL
+            facebook: Facebook URL
+            instagram: Instagram URL
+            tiktok: TikTok URL
+
+        Returns:
+            Updated contact data or empty dict if nothing to update
+        """
+        fields_map = {
+            "linkedin_url": linkedin,
+            "facebook_url": facebook,
+            "instagram_url": instagram,
+            "tiktok_url": tiktok,
+        }
+
+        # Only include fields that have a value
+        custom_fields = [
+            {"id": key, "value": value}
+            for key, value in fields_map.items()
+            if value
+        ]
+
+        if not custom_fields:
+            logger.debug("No social profiles to save for contact %s", contact_id)
+            return {}
+
+        return await self.update_custom_fields(contact_id, custom_fields)

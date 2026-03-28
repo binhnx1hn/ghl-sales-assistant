@@ -63,6 +63,48 @@ const ApiClient = {
   },
 
   /**
+   * Phase 2A: Find social profiles for an existing GHL contact.
+   * Calls POST /leads/enrich — searches LinkedIn, Facebook, Instagram, TikTok
+   * via Serper.dev and saves found URLs as GHL custom fields.
+   *
+   * @param {string} contactId - GHL contact ID
+   * @param {Object} businessData - { business_name, website, city, state }
+   * @returns {Promise<Object>} EnrichResponse with profiles_found, profiles_count, saved_to_ghl
+   */
+  async enrichLead(contactId, businessData) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/enrich`, {
+      contact_id: contactId,
+      business_name: businessData.business_name || businessData.businessName || "",
+      website: businessData.website || null,
+      city: businessData.city || null,
+      state: businessData.state || null,
+    });
+  },
+
+  /**
+   * Phase 2A: Draft a personalized email from a LinkedIn profile using AI.
+   * Calls POST /leads/draft-email — fetches LinkedIn profile via Google Search
+   * and uses GPT-4o-mini to draft a cold outreach email. Draft is saved as GHL note.
+   *
+   * @param {string} contactId - GHL contact ID
+   * @param {Object} businessData - { business_name, linkedin_url }
+   * @param {Object} senderInfo - { sender_name, sender_company, pitch } (all optional)
+   * @returns {Promise<Object>} DraftEmailResponse with draft_email { subject, body }
+   */
+  async draftEmail(contactId, businessData, senderInfo = {}) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/draft-email`, {
+      contact_id: contactId,
+      business_name: businessData.business_name || businessData.businessName || "",
+      linkedin_url: businessData.linkedin_url || null,
+      sender_name: senderInfo.sender_name || null,
+      sender_company: senderInfo.sender_company || null,
+      pitch: senderInfo.pitch || null,
+    });
+  },
+
+  /**
    * Make an HTTP request to the backend API.
    * @param {string} method - HTTP method
    * @param {string} url - Full URL
