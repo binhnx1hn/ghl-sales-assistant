@@ -285,6 +285,46 @@
   background: #4338CA !important;
 }
 
+/* ─── Social Profile Inputs ──────────────────────────────────── */
+
+.ghl-sa-social-inputs {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.ghl-sa-social-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.ghl-sa-social-icon {
+  width: 22px !important;
+  height: 22px !important;
+  flex-shrink: 0 !important;
+  border-radius: 4px !important;
+  display: block !important;
+}
+
+.ghl-sa-form-group input[type="url"] {
+  width: 100% !important;
+  padding: 7px 10px !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  color: #374151 !important;
+  background: #FFFFFF !important;
+  box-sizing: border-box !important;
+  font-family: inherit !important;
+}
+
+.ghl-sa-form-group input[type="url"]:focus {
+  outline: none !important;
+  border-color: #4F46E5 !important;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15) !important;
+}
+
 /* ─── Source Info ─────────────────────────────────────────────── */
 
 .ghl-sa-source-info {

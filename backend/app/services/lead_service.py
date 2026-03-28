@@ -66,6 +66,21 @@ class LeadService:
                 )
             )
 
+        # Save social links if provided by user in popup
+        has_social = bool(
+            lead.social_links and any(lead.social_links.get(p) for p in ("linkedin", "facebook", "instagram", "tiktok"))
+        )
+        if has_social:
+            coroutines.append(
+                self.ghl.update_social_profiles(
+                    contact_id=contact_id,
+                    linkedin=lead.social_links.get("linkedin") or None,
+                    facebook=lead.social_links.get("facebook") or None,
+                    instagram=lead.social_links.get("instagram") or None,
+                    tiktok=lead.social_links.get("tiktok") or None,
+                )
+            )
+
         # Execute all post-contact operations concurrently
         results = await asyncio.gather(*coroutines, return_exceptions=True)
 
@@ -85,6 +100,10 @@ class LeadService:
         task_created = False
         if lead.follow_up_date and task_title:
             task_created = not isinstance(results[idx], Exception)
+            idx += 1
+
+        if has_social:
+            social_saved = not isinstance(results[idx], Exception)  # noqa: F841
 
         return LeadCaptureResponse(
             success=True,

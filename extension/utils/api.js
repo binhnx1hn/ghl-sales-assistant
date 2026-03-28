@@ -83,6 +83,25 @@ const ApiClient = {
   },
 
   /**
+   * Phase 2A: Save user-confirmed social profiles to a GHL contact.
+   * Calls POST /leads/save-profiles after user has reviewed and edited the URLs.
+   *
+   * @param {string} contactId - GHL contact ID
+   * @param {Object} profiles - { linkedin, facebook, instagram, tiktok }
+   * @returns {Promise<Object>}
+   */
+  async saveProfiles(contactId, profiles) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/save-profiles`, {
+      contact_id: contactId,
+      linkedin: profiles.linkedin || null,
+      facebook: profiles.facebook || null,
+      instagram: profiles.instagram || null,
+      tiktok: profiles.tiktok || null,
+    });
+  },
+
+  /**
    * Phase 2A: Draft a personalized email from a LinkedIn profile using AI.
    * Calls POST /leads/draft-email — fetches LinkedIn profile via Google Search
    * and uses GPT-4o-mini to draft a cold outreach email. Draft is saved as GHL note.

@@ -137,6 +137,28 @@ const ReviewPopup = {
           </div>
         </div>
 
+        <div class="${GHL_ASSISTANT.CSS_PREFIX}-form-group">
+          <label>Social Profiles</label>
+          <div class="${GHL_ASSISTANT.CSS_PREFIX}-social-inputs">
+            <div class="${GHL_ASSISTANT.CSS_PREFIX}-social-row">
+              <img class="${GHL_ASSISTANT.CSS_PREFIX}-social-icon" src="https://ssl.gstatic.com/kpui/social/linkedin_32x32.png" alt="LinkedIn" title="LinkedIn" width="22" height="22" />
+              <input type="url" id="${GHL_ASSISTANT.CSS_PREFIX}-linkedin" placeholder="https://linkedin.com/company/..." value="${this._escapeHtml((data.socialLinks || {}).linkedin || "")}" />
+            </div>
+            <div class="${GHL_ASSISTANT.CSS_PREFIX}-social-row">
+              <img class="${GHL_ASSISTANT.CSS_PREFIX}-social-icon" src="https://ssl.gstatic.com/kpui/social/fb_32x32.png" alt="Facebook" title="Facebook" width="22" height="22" />
+              <input type="url" id="${GHL_ASSISTANT.CSS_PREFIX}-facebook" placeholder="https://facebook.com/..." value="${this._escapeHtml((data.socialLinks || {}).facebook || "")}" />
+            </div>
+            <div class="${GHL_ASSISTANT.CSS_PREFIX}-social-row">
+              <img class="${GHL_ASSISTANT.CSS_PREFIX}-social-icon" src="https://ssl.gstatic.com/kpui/social/instagram_32x32.png" alt="Instagram" title="Instagram" width="22" height="22" />
+              <input type="url" id="${GHL_ASSISTANT.CSS_PREFIX}-instagram" placeholder="https://instagram.com/..." value="${this._escapeHtml((data.socialLinks || {}).instagram || "")}" />
+            </div>
+            <div class="${GHL_ASSISTANT.CSS_PREFIX}-social-row">
+              <img class="${GHL_ASSISTANT.CSS_PREFIX}-social-icon" src="https://ssl.gstatic.com/kpui/social/tiktok_32x32.png" alt="TikTok" title="TikTok" width="22" height="22" />
+              <input type="url" id="${GHL_ASSISTANT.CSS_PREFIX}-tiktok" placeholder="https://tiktok.com/@..." value="${this._escapeHtml((data.socialLinks || {}).tiktok || "")}" />
+            </div>
+          </div>
+        </div>
+
         <div class="${GHL_ASSISTANT.CSS_PREFIX}-source-info">
           <small>Source: ${this._escapeHtml(data.sourceType || "unknown")} | ${this._escapeHtml(this._truncateUrl(data.sourceUrl || ""))}</small>
         </div>
@@ -230,8 +252,14 @@ const ReviewPopup = {
       note: this._getVal("note"),
       follow_up_date: this._getVal("followup") || null,
       industry: this._getSelectedIndustry(),
-      // Social links pre-extracted from DOM (may be empty if not found on page)
-      socialLinks: this._currentData?.socialLinks || { linkedin: "", facebook: "", instagram: "", tiktok: "" },
+      // Social links — read from editable inputs (user may have corrected them)
+      // Use snake_case to match backend Pydantic model field: social_links
+      social_links: {
+        linkedin: this._getVal("linkedin"),
+        facebook: this._getVal("facebook"),
+        instagram: this._getVal("instagram"),
+        tiktok: this._getVal("tiktok"),
+      },
     };
 
     // Validate required fields
@@ -309,7 +337,7 @@ const ReviewPopup = {
     if (existing) existing.remove();
 
     // Check for pre-extracted social links from DOM
-    const preLinks = formData.socialLinks || { linkedin: "", facebook: "", instagram: "", tiktok: "" };
+    const preLinks = formData.social_links || { linkedin: "", facebook: "", instagram: "", tiktok: "" };
     const preFound = Object.values(preLinks).filter(Boolean).length;
     const hasPreLinks = preFound > 0;
 
@@ -433,25 +461,131 @@ const ReviewPopup = {
         const count = result.profiles_count || 0;
         const profiles = result.profiles_found || {};
 
-        // Build summary of found profiles
-        const found = [];
-        if (profiles.linkedin) found.push(`<a href="${profiles.linkedin}" target="_blank" style="color:#a78bfa;">LinkedIn</a>`);
-        if (profiles.facebook) found.push(`<a href="${profiles.facebook}" target="_blank" style="color:#60a5fa;">Facebook</a>`);
-        if (profiles.instagram) found.push(`<a href="${profiles.instagram}" target="_blank" style="color:#f472b6;">Instagram</a>`);
-        if (profiles.tiktok) found.push(`<a href="${profiles.tiktok}" target="_blank" style="color:#34d399;">TikTok</a>`);
+        enrichBtn.innerHTML = `<span>🔍</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">Review before saving</div></div>`;
 
-        enrichBtn.innerHTML = `<span>✅</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">${count > 0 ? "Saved to GHL contact" : "None found"}</div></div>`;
-
-        if (statusEl) {
-          statusEl.innerHTML = count > 0
-            ? `Found: ${found.join(" · ")}`
-            : "No public profiles found for this business.";
+        if (count === 0) {
+          if (statusEl) statusEl.textContent = "No public profiles found for this business.";
+          enrichBtn.disabled = false;
+          enrichBtn.style.opacity = "1";
+          return;
         }
 
-        // Enable Draft Email button and pass LinkedIn URL if found
-        const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
-        if (draftBtn && profiles.linkedin) {
-          draftBtn.dataset.linkedinUrl = profiles.linkedin;
+        // Store editable state per platform (start as display mode)
+        const platformMeta = [
+          { key: "linkedin", label: "LinkedIn", color: "#a78bfa", icon: "https://ssl.gstatic.com/kpui/social/linkedin_32x32.png" },
+          { key: "facebook", label: "Facebook", color: "#60a5fa", icon: "https://ssl.gstatic.com/kpui/social/fb_32x32.png" },
+          { key: "instagram", label: "Instagram", color: "#f472b6", icon: "https://ssl.gstatic.com/kpui/social/instagram_32x32.png" },
+          { key: "tiktok", label: "TikTok", color: "#34d399", icon: "https://ssl.gstatic.com/kpui/social/tiktok_32x32.png" },
+        ];
+
+        // Mutable copy of profiles the user can edit
+        const editedProfiles = {
+          linkedin: profiles.linkedin || "",
+          facebook: profiles.facebook || "",
+          instagram: profiles.instagram || "",
+          tiktok: profiles.tiktok || "",
+        };
+
+        const renderProfileLinks = () => {
+          const found = platformMeta.filter(p => editedProfiles[p.key]);
+          const notFound = platformMeta.filter(p => !editedProfiles[p.key]);
+
+          const foundHtml = found.map(({ key, label, color, icon }) => `
+            <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;" data-edit-key="${key}" title="Click to edit">
+              <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;" />
+              <a href="${editedProfiles[key]}" target="_blank" style="color:${color};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${label}</a>
+              <span style="font-size:10px;opacity:0.5;" data-edit-key="${key}">✎</span>
+            </span>
+          `).join('<span style="opacity:0.4;padding:0 2px;">·</span>');
+
+          const notFoundHtml = notFound.map(({ key, label, icon }) => `
+            <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;opacity:0.4;" data-edit-key="${key}" title="Click to add ${label}">
+              <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;filter:grayscale(1);" />
+              <span style="color:#aaa;font-size:12px;">${label}</span>
+              <span style="font-size:10px;">+</span>
+            </span>
+          `).join('<span style="opacity:0.2;padding:0 2px;">·</span>');
+
+          return `
+            <div style="margin-top:6px;">
+              <div style="font-size:11px;opacity:0.6;margin-bottom:4px;">Found (click to edit · click link to open):</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${foundHtml}</div>
+              ${notFound.length ? `<div style="font-size:11px;opacity:0.4;margin-bottom:4px;">Not found (click + to add):</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${notFoundHtml}</div>` : ""}
+              <button id="${GHL_ASSISTANT.CSS_PREFIX}-enrich-confirm" style="
+                margin-top:4px;width:100%;padding:7px;background:#7C3AED;border:none;border-radius:6px;
+                color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
+                ✅ Confirm & Save to GHL
+              </button>
+            </div>
+          `;
+        };
+
+        const renderEditInput = (key) => {
+          const meta = platformMeta.find(p => p.key === key);
+          return `
+            <div style="margin-top:6px;">
+              <div style="font-size:11px;opacity:0.6;margin-bottom:4px;">Edit ${meta.label} URL:</div>
+              <div style="display:flex;gap:4px;align-items:center;">
+                <img src="${meta.icon}" width="16" height="16" style="border-radius:3px;flex-shrink:0;" />
+                <input id="${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input" type="url"
+                  value="${editedProfiles[key]}"
+                  placeholder="${meta.label} URL"
+                  style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:4px;padding:5px 8px;color:#fff;font-size:12px;outline:none;" />
+                <button id="${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok" data-key="${key}" style="padding:5px 8px;background:#4F46E5;border:none;border-radius:4px;color:#fff;font-size:11px;cursor:pointer;">OK</button>
+              </div>
+            </div>
+          `;
+        };
+
+        // Show profile links in statusEl
+        if (statusEl) {
+          const showLinks = () => {
+            statusEl.innerHTML = renderProfileLinks();
+
+            // Attach edit triggers on badges
+            statusEl.querySelectorAll("[data-edit-key]").forEach(el => {
+              el.addEventListener("click", (e) => {
+                if (e.target.tagName === "A") return; // let link open
+                const key = el.dataset.editKey || el.closest("[data-edit-key]")?.dataset.editKey;
+                if (!key) return;
+                statusEl.innerHTML = renderEditInput(key);
+                const input = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`);
+                if (input) input.focus();
+                const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok`);
+                if (okBtn) {
+                  okBtn.addEventListener("click", () => {
+                    const val = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`)?.value || "";
+                    editedProfiles[okBtn.dataset.key] = val.trim();
+                    showLinks();
+                  });
+                }
+              });
+            });
+
+            // Confirm save button
+            const confirmBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-confirm`);
+            if (confirmBtn) {
+              confirmBtn.addEventListener("click", async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = "Saving...";
+                try {
+                  await ApiClient.saveProfiles(contactId, editedProfiles);
+                  enrichBtn.innerHTML = `<span>✅</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">Saved to GHL contact</div></div>`;
+                  statusEl.textContent = "✅ Social profiles saved to GHL.";
+                  const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
+                  if (draftBtn && editedProfiles.linkedin) {
+                    draftBtn.dataset.linkedinUrl = editedProfiles.linkedin;
+                  }
+                } catch (saveErr) {
+                  confirmBtn.disabled = false;
+                  confirmBtn.textContent = `❌ Save failed: ${saveErr.message}`;
+                }
+              });
+            }
+          };
+
+          showLinks();
+
         }
       } else {
         if (statusEl) statusEl.textContent = "⚠️ Search completed but no profiles found.";

@@ -5,7 +5,7 @@ Handles lead capture from the Chrome Extension and lead listing.
 Phase 2A adds: /enrich (social profile finder) and /draft-email (AI email drafter).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
 from app.models.lead import (
@@ -18,6 +18,7 @@ from app.models.enrich import (
     EnrichRequest,
     EnrichResponse,
     SocialProfiles,
+    SaveProfilesRequest,
     DraftEmailRequest,
     DraftEmailResponse,
     EmailDraft,
@@ -115,9 +116,14 @@ async def list_leads(
 )
 async def enrich_lead(
     request: EnrichRequest,
+    save: bool = Query(False, description="If true, immediately save found profiles to GHL. If false (default), return results for user review."),
     ghl_service: GHLService = Depends(get_ghl_service),
 ):
-    """Find social media profiles for an existing GHL contact and save them."""
+    """Find social media profiles for an existing GHL contact.
+
+    By default (save=false) returns found profiles without saving — caller must
+    confirm and call /save-profiles to persist. Pass save=true for legacy behaviour.
+    """
     social_service = SocialResearchService()
 
     try:
@@ -129,25 +135,25 @@ async def enrich_lead(
             state=request.state,
         )
 
-        # Save found profiles as GHL contact custom fields
+        # Save found profiles as GHL contact custom fields only if requested
         saved = False
-        try:
-            await ghl_service.update_social_profiles(
-                contact_id=request.contact_id,
-                linkedin=profiles.get("linkedin"),
-                facebook=profiles.get("facebook"),
-                instagram=profiles.get("instagram"),
-                tiktok=profiles.get("tiktok"),
-            )
-            saved = True
-        except GHLAPIError as ghl_err:
-            # Log but don't fail — profiles were found even if GHL save failed
-            import logging
-            logging.getLogger(__name__).warning(
-                "Could not save social profiles to GHL contact %s: %s",
-                request.contact_id,
-                ghl_err.message,
-            )
+        if save:
+            try:
+                await ghl_service.update_social_profiles(
+                    contact_id=request.contact_id,
+                    linkedin=profiles.get("linkedin"),
+                    facebook=profiles.get("facebook"),
+                    instagram=profiles.get("instagram"),
+                    tiktok=profiles.get("tiktok"),
+                )
+                saved = True
+            except GHLAPIError as ghl_err:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Could not save social profiles to GHL contact %s: %s",
+                    request.contact_id,
+                    ghl_err.message,
+                )
 
         profiles_count = sum(1 for v in profiles.values() if v)
 
@@ -165,6 +171,29 @@ async def enrich_lead(
             status_code=500,
             detail=f"Failed to enrich lead: {str(e)}",
         )
+
+
+@router.post(
+    "/save-profiles",
+    summary="Save confirmed social profiles to a GHL contact",
+    description="Phase 2A: Saves user-reviewed social profile URLs to GHL contact custom fields.",
+)
+async def save_profiles(
+    request: SaveProfilesRequest,
+    ghl_service: GHLService = Depends(get_ghl_service),
+):
+    """Save user-confirmed social profiles to a GHL contact."""
+    try:
+        await ghl_service.update_social_profiles(
+            contact_id=request.contact_id,
+            linkedin=request.linkedin or None,
+            facebook=request.facebook or None,
+            instagram=request.instagram or None,
+            tiktok=request.tiktok or None,
+        )
+        return {"success": True, "contact_id": request.contact_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save profiles: {str(e)}")
 
 
 @router.post(

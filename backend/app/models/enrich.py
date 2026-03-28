@@ -40,6 +40,16 @@ class SocialProfiles(BaseModel):
     tiktok: Optional[str] = Field(None, description="TikTok profile URL")
 
 
+class SaveProfilesRequest(BaseModel):
+    """Request model to save user-confirmed social profiles to a GHL contact."""
+
+    contact_id: str = Field(..., description="GHL contact ID to update")
+    linkedin: Optional[str] = Field(None, description="LinkedIn URL (empty string = clear)")
+    facebook: Optional[str] = Field(None, description="Facebook URL")
+    instagram: Optional[str] = Field(None, description="Instagram URL")
+    tiktok: Optional[str] = Field(None, description="TikTok URL")
+
+
 class EnrichResponse(BaseModel):
     """Response model after enriching a contact with social profile links."""
 

@@ -29,6 +29,7 @@ class LeadCaptureRequest(BaseModel):
     follow_up_date: Optional[date] = Field(None, description="Follow-up date for the task")
     industry: Optional[str] = Field(None, description="Industry type selected by user (e.g. Restaurants, Medical Offices)")
     tags: List[str] = Field(default_factory=list, description="Tags to apply to the contact")
+    social_links: Optional[dict] = Field(None, description="Social profile URLs reviewed by user: {linkedin, facebook, instagram, tiktok}")
 
     model_config = {
         "json_schema_extra": {
