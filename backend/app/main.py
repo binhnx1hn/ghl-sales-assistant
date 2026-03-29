@@ -4,11 +4,19 @@ GHL Sales Assistant - FastAPI Application Entry Point
 Main application setup with CORS, routers, and startup configuration.
 """
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1.router import api_router
+
+# Configure Python root logger so app-level INFO logs appear in docker logs.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: [%(name)s] %(message)s",
+)
 
 app = FastAPI(
     title="GHL Sales Assistant API",

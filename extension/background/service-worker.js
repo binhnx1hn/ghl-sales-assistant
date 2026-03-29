@@ -8,6 +8,21 @@
 // Import utilities (service workers use importScripts in MV3)
 importScripts("../utils/constants.js", "../utils/storage.js", "../utils/api.js");
 
+// Handle navigation preload to prevent "preloadResponse settled" warning.
+// Without this, Chrome logs a warning when navigation preload is cancelled
+// before the promise settles.
+self.addEventListener("fetch", (event) => {
+  if (event.preloadResponse) {
+    event.respondWith(
+      (async () => {
+        const preloaded = await event.preloadResponse;
+        if (preloaded) return preloaded;
+        return fetch(event.request);
+      })()
+    );
+  }
+});
+
 /**
  * Listen for messages from content scripts and popup.
  */

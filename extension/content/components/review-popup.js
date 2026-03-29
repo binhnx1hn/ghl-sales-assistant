@@ -13,6 +13,9 @@ const ReviewPopup = {
   // Phase 2A: store last captured contact_id for enrichment/email drafting
   _lastContactId: null,
   _lastFormData: null,
+  // Phase 2B: outreach queue state
+  _tierResult: null,
+  _queueItems: [],
 
   /**
    * Show the review popup with pre-filled data.
@@ -289,10 +292,10 @@ const ReviewPopup = {
       typeof chrome.runtime.sendMessage === "function";
 
     if (!messagingAvailable) {
-      // Direct API call fallback
+      // Direct API call fallback (e.g. after extension reload without page refresh)
       try {
         const response = await ApiClient.captureLead(formData);
-        this._handleSaveResponse(response, formData, contactId);
+        this._handleSaveResponse(response, formData);
       } catch (err) {
         this._showToast(`❌ Failed to save: ${err.message}`, "error");
       }
@@ -306,7 +309,7 @@ const ReviewPopup = {
         if (chrome.runtime.lastError) {
           // Service worker disconnected — retry via direct API
           ApiClient.captureLead(formData)
-            .then((r) => this._handleSaveResponse(r, formData, contactId))
+            .then((r) => this._handleSaveResponse(r, formData))
             .catch((err) => this._showToast(`❌ Failed to save: ${err.message}`, "error"));
           return;
         }
@@ -532,7 +535,7 @@ const ReviewPopup = {
                 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d5db;" title="${url}">
                   ${handle}
                 </span>
-                <a href="${url}" target="_blank" style="color:#6b7280;font-size:10px;flex-shrink:0;" onclick="event.stopPropagation()">↗</a>
+                <a href="${url}" target="_blank" style="color:#6b7280;font-size:10px;flex-shrink:0;" data-ext-link="1">↗</a>
               </label>
             `;
           }).join("");
@@ -590,7 +593,7 @@ const ReviewPopup = {
             const urlHtml = hasUrl
               ? `<a href="${url}" target="_blank"
                    style="color:#9ca3af;font-size:11px;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                   onclick="event.stopPropagation()" title="${url}">${truncated}</a>`
+                   data-ext-link="1" title="${url}">${truncated}</a>`
               : `<span style="color:#6b7280;font-size:11px;flex:1;">not found</span>`;
 
             const badgeHtml = candidateCount > 1
@@ -624,6 +627,13 @@ const ReviewPopup = {
                 color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
                 ✅ Confirm & Save to GHL
               </button>
+              <button id="${GHL_ASSISTANT.CSS_PREFIX}-outreach-queue-btn" style="
+                margin-top:6px;width:100%;padding:7px;
+                background:linear-gradient(135deg,#1d4ed8 0%,#7C3AED 100%);
+                border:none;border-radius:6px;
+                color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
+                📤 Outreach Queue
+              </button>
             </div>
           `;
         };
@@ -654,6 +664,11 @@ const ReviewPopup = {
           // Helper: attach candidate picker or plain-edit handlers after renderEditInput
           // Declared before showLinks so it is in scope when showLinks references it
           const _attachPickerHandlers = (key) => {
+            // Prevent external profile links from bubbling to row handlers (CSP-safe replacement for onclick).
+            statusEl.querySelectorAll("a[data-ext-link]").forEach(link => {
+              link.addEventListener("click", (e) => e.stopPropagation());
+            });
+
             // Candidate picker flow
             const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-ok-${key}`);
             if (okBtn) {
@@ -689,6 +704,12 @@ const ReviewPopup = {
 
           const showLinks = () => {
             statusEl.innerHTML = renderProfileLinks();
+
+            // Prevent external profile links from bubbling up to row click handlers.
+            // Uses event delegation instead of inline onclick (blocked by CSP).
+            statusEl.querySelectorAll("a[data-ext-link]").forEach(link => {
+              link.addEventListener("click", (e) => e.stopPropagation());
+            });
 
             // Attach checkbox change handlers
             statusEl.querySelectorAll("[data-chk-key]").forEach(chk => {
@@ -726,6 +747,19 @@ const ReviewPopup = {
                 _attachPickerHandlers(key);
               });
             });
+
+            // Outreach Queue button
+            const outreachQueueBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-outreach-queue-btn`);
+            if (outreachQueueBtn) {
+              outreachQueueBtn.addEventListener("click", () => {
+                // Store state for use in showOutreachQueue
+                ReviewPopup._lastContactId = contactId;
+                ReviewPopup._lastFormData = formData;
+                ReviewPopup._tierResult = null;
+                ReviewPopup._queueItems = [];
+                ReviewPopup.showOutreachQueue(contactId, formData, editedProfiles, showLinks);
+              });
+            }
 
             // Confirm save button
             const confirmBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-confirm`);
@@ -846,6 +880,364 @@ const ReviewPopup = {
     }
 
     clearTimeout(autoRemoveTimer);
+  },
+
+  /**
+   * Phase 2B: Show the outreach queue panel inside the Phase 2 status area.
+   * Replaces statusEl content with classify + queue items UI.
+   *
+   * @param {string} contactId - GHL contact ID
+   * @param {Object} formData - Lead form data
+   * @param {Object} editedProfiles - { linkedin, facebook, instagram, tiktok } URLs
+   * @param {Function} backFn - Function to call when "← Back" is pressed
+   */
+  async showOutreachQueue(contactId, formData, editedProfiles, backFn) {
+    const P = GHL_ASSISTANT.CSS_PREFIX;
+
+    // Platform metadata
+    const PLATFORM_ICONS = { linkedin: "🔗", facebook: "👤", instagram: "📸", tiktok: "🎵" };
+    const MSG_TYPE_LABELS = {
+      inmail: "InMail",
+      connection_request: "Connection Req.",
+      page_dm: "Page DM",
+      dm: "Direct Message",
+    };
+
+    // Find the phase2 panel status container
+    const statusEl = document.getElementById(`${P}-phase2-status`);
+    if (!statusEl) return;
+
+    // Determine platforms that have URLs
+    const platformsWithUrls = Object.entries(editedProfiles || {})
+      .filter(([, url]) => !!url)
+      .map(([key]) => key);
+
+    // ── Render helpers ────────────────────────────────────────────────────
+
+    const renderTierBadge = (tierResult) => {
+      if (!tierResult) return "";
+      const TIER_COLORS = { hot: "#ef4444", warm: "#f59e0b", cold: "#3b82f6" };
+      const TIER_EMOJI = { hot: "🔴", warm: "🟡", cold: "🔵" };
+      const t = (tierResult.tier || "cold").toLowerCase();
+      const color = TIER_COLORS[t] || "#3b82f6";
+      const emoji = TIER_EMOJI[t] || "🔵";
+      const reasons = (tierResult.reasons || []).slice(0, 2);
+      return `
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;
+          background:${color}22;border:1px solid ${color}55;margin-bottom:8px;">
+          <span style="font-size:14px;">${emoji}</span>
+          <div>
+            <span style="color:${color};font-weight:700;font-size:13px;text-transform:uppercase;">${t}</span>
+            <span style="color:#9ca3af;font-size:11px;margin-left:6px;">Score: ${tierResult.score || 0}/100</span>
+            ${reasons.length ? `<div style="color:#9ca3af;font-size:10px;margin-top:1px;">${reasons.map(r => this._escapeHtml(r)).join(" · ")}</div>` : ""}
+          </div>
+        </div>
+      `;
+    };
+
+    const getCharColor = (count, limit) => {
+      const ratio = count / limit;
+      if (ratio > 1) return "#ef4444";
+      if (ratio > 0.9) return "#f59e0b";
+      return "#9ca3af";
+    };
+
+    const renderQueueItem = (item, idx) => {
+      const icon = PLATFORM_ICONS[item.platform] || "📨";
+      const typeLabel = MSG_TYPE_LABELS[item.message_type] || item.message_type || "";
+      const msg = item.drafted_message || "";
+      const charCount = item.char_count != null ? item.char_count : msg.length;
+      const charLimit = item.char_limit || 1000;
+      const charColor = getCharColor(charCount, charLimit);
+      // Preview: first 3 lines, max 200 chars
+      const lines = msg.split("\n").slice(0, 3).join("\n");
+      const preview = lines.length > 200 ? lines.slice(0, 200) + "..." : lines;
+
+      return `
+        <div id="${P}-oq-item-${idx}" data-item-id="${this._escapeHtml(item.item_id || "")}"
+          data-platform="${item.platform}" data-profile-url="${this._escapeHtml(item.profile_url || "")}"
+          style="padding:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+            border-radius:6px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <input type="checkbox" id="${P}-oq-chk-${idx}" checked
+              style="accent-color:#7C3AED;cursor:pointer;flex-shrink:0;" />
+            <span style="font-size:13px;">${icon}</span>
+            <span style="color:#e5e7eb;font-size:12px;font-weight:600;flex:1;">${this._escapeHtml(item.platform || "")} — ${this._escapeHtml(typeLabel)}</span>
+            <span id="${P}-oq-counter-${idx}" style="font-size:10px;color:${charColor};flex-shrink:0;">${charCount}/${charLimit}</span>
+          </div>
+          <div id="${P}-oq-preview-${idx}" style="color:#9ca3af;font-size:11px;line-height:1.4;white-space:pre-wrap;margin-bottom:6px;">${this._escapeHtml(preview)}${msg.length > preview.length ? "..." : ""}</div>
+          <div id="${P}-oq-edit-area-${idx}" style="display:none;margin-bottom:6px;">
+            <textarea id="${P}-oq-textarea-${idx}"
+              style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:4px;padding:6px;color:#e5e7eb;font-size:11px;line-height:1.4;
+                resize:vertical;box-sizing:border-box;min-height:80px;outline:none;"
+              rows="5">${this._escapeHtml(msg)}</textarea>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button id="${P}-oq-edit-btn-${idx}" data-idx="${idx}"
+              style="padding:3px 7px;background:rgba(124,58,237,0.3);border:1px solid #7C3AED;
+                border-radius:4px;color:#c4b5fd;font-size:10px;cursor:pointer;">✏ Edit</button>
+            <button id="${P}-oq-copy-btn-${idx}" data-idx="${idx}"
+              style="padding:3px 7px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:4px;color:#e5e7eb;font-size:10px;cursor:pointer;">📋 Copy</button>
+            <button id="${P}-oq-open-btn-${idx}" data-idx="${idx}"
+              style="padding:3px 7px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:4px;color:#e5e7eb;font-size:10px;cursor:pointer;">↗ Open Profile</button>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderPanel = () => {
+      // Re-query each render to handle cases where the panel was rebuilt
+      // (e.g. after a Back navigation) while an async API call was in-flight.
+      const currentStatusEl = document.getElementById(`${P}-phase2-status`);
+      if (!currentStatusEl) return;
+
+      const tierHtml = renderTierBadge(this._tierResult);
+      const hasItems = (this._queueItems || []).length > 0;
+
+      const classifyBtnHtml = `
+        <button id="${P}-oq-classify-btn"
+          style="width:100%;padding:7px;background:linear-gradient(135deg,#1d4ed8,#4338ca);
+            border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;">
+          🔵 Classify Lead
+        </button>
+      `;
+
+      const itemsHtml = hasItems
+        ? (this._queueItems || []).map((item, idx) => renderQueueItem(item, idx)).join("")
+        : `<div id="${P}-oq-loading" style="color:#9ca3af;font-size:12px;text-align:center;padding:12px;">
+            ⏳ Drafting outreach messages...
+           </div>`;
+
+      currentStatusEl.innerHTML = `
+        <div style="padding:4px 0;">
+          <div style="font-size:12px;font-weight:600;color:#a78bfa;margin-bottom:8px;">📤 Outreach Queue</div>
+          ${this._tierResult ? tierHtml : classifyBtnHtml}
+          <div id="${P}-oq-items-container">${itemsHtml}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button id="${P}-oq-back-btn"
+              style="flex:1;padding:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:6px;color:#e5e7eb;font-size:11px;cursor:pointer;">← Back</button>
+            <button id="${P}-oq-sent-btn"
+              style="flex:2;padding:6px;background:#059669;border:none;
+                border-radius:6px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">✅ Mark All Sent</button>
+          </div>
+        </div>
+      `;
+
+      this._attachOutreachQueueHandlers(contactId, formData, editedProfiles, backFn);
+    };
+
+    // Initial render
+    renderPanel();
+
+    // Auto-load queue items if none yet
+    if (!this._queueItems || this._queueItems.length === 0) {
+      if (platformsWithUrls.length > 0) {
+        try {
+          const result = await ApiClient.createOutreachQueue({
+            contact_id: contactId,
+            business_name: formData.business_name || "",
+            platforms: platformsWithUrls,
+            context: {
+              linkedin_url: editedProfiles?.linkedin || "",
+              facebook_url: editedProfiles?.facebook || "",
+              instagram_url: editedProfiles?.instagram || "",
+              tiktok_url: editedProfiles?.tiktok || "",
+              sender_name: formData.senderName || "",
+              sender_company: formData.senderCompany || "",
+              pitch: formData.pitch || "",
+              industry: formData.industry || "",
+              website: formData.website || null,
+              city: formData.city || null,
+              state: formData.state || null,
+            },
+            draft_messages: true,
+          });
+          this._queueItems = result.items || [];
+          renderPanel();
+        } catch (err) {
+          // Try fetching existing queue
+          try {
+            const existing = await ApiClient.getOutreachQueue(contactId, "pending");
+            this._queueItems = existing.items || [];
+            renderPanel();
+          } catch {
+            const loadingEl = document.getElementById(`${P}-oq-loading`);
+            if (loadingEl) loadingEl.textContent = `❌ Could not load queue: ${err.message}`;
+          }
+        }
+      } else {
+        const loadingEl = document.getElementById(`${P}-oq-loading`);
+        if (loadingEl) loadingEl.textContent = "ℹ️ No platform URLs found. Save profiles first.";
+      }
+    }
+  },
+
+  /**
+   * Phase 2B: Attach event handlers for outreach queue panel items.
+   * @private
+   */
+  _attachOutreachQueueHandlers(contactId, formData, editedProfiles, backFn) {
+    const P = GHL_ASSISTANT.CSS_PREFIX;
+
+    // ── Classify button ────────────────────────────────────────────────────
+    const classifyBtn = document.getElementById(`${P}-oq-classify-btn`);
+    if (classifyBtn) {
+      classifyBtn.addEventListener("click", async () => {
+        classifyBtn.disabled = true;
+        classifyBtn.textContent = "🔵 Classifying...";
+        try {
+          const result = await ApiClient.classifyLead({
+            contact_id: contactId,
+            business_name: formData.business_name || "",
+            website: formData.website || null,
+            industry: formData.industry || null,
+            city: formData.city || null,
+            state: formData.state || null,
+            lead_source: formData.source_type || null,
+            linkedin_url: editedProfiles.linkedin || null,
+            trigger_workflow: false,
+          });
+          this._tierResult = result;
+          // Re-render classify area with badge
+          const P2 = GHL_ASSISTANT.CSS_PREFIX;
+          const TIER_COLORS = { hot: "#ef4444", warm: "#f59e0b", cold: "#3b82f6" };
+          const TIER_EMOJI = { hot: "🔴", warm: "🟡", cold: "🔵" };
+          const t = (result.tier || "cold").toLowerCase();
+          const color = TIER_COLORS[t] || "#3b82f6";
+          const emoji = TIER_EMOJI[t] || "🔵";
+          const reasons = (result.reasons || []).slice(0, 2);
+          classifyBtn.outerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;
+              background:${color}22;border:1px solid ${color}55;margin-bottom:8px;">
+              <span style="font-size:14px;">${emoji}</span>
+              <div>
+                <span style="color:${color};font-weight:700;font-size:13px;text-transform:uppercase;">${t}</span>
+                <span style="color:#9ca3af;font-size:11px;margin-left:6px;">Score: ${result.score || 0}/100</span>
+                ${reasons.length ? `<div style="color:#9ca3af;font-size:10px;margin-top:1px;">${reasons.map(r => this._escapeHtml(r)).join(" · ")}</div>` : ""}
+              </div>
+            </div>
+          `;
+        } catch (err) {
+          classifyBtn.disabled = false;
+          classifyBtn.textContent = `❌ Classify failed: ${err.message.slice(0, 40)}`;
+        }
+      });
+    }
+
+    // ── Per-item handlers ──────────────────────────────────────────────────
+    (this._queueItems || []).forEach((item, idx) => {
+      // Edit toggle
+      const editBtn = document.getElementById(`${P}-oq-edit-btn-${idx}`);
+      const editArea = document.getElementById(`${P}-oq-edit-area-${idx}`);
+      const previewEl = document.getElementById(`${P}-oq-preview-${idx}`);
+      const textarea = document.getElementById(`${P}-oq-textarea-${idx}`);
+      const counterEl = document.getElementById(`${P}-oq-counter-${idx}`);
+      const charLimit = item.char_limit || 1000;
+
+      if (editBtn && editArea && previewEl && textarea) {
+        let editing = false;
+        editBtn.addEventListener("click", () => {
+          editing = !editing;
+          editArea.style.display = editing ? "block" : "none";
+          previewEl.style.display = editing ? "none" : "block";
+          editBtn.textContent = editing ? "✓ Done" : "✏ Edit";
+          if (editing) textarea.focus();
+        });
+
+        // Live char counter on textarea input
+        textarea.addEventListener("input", () => {
+          const len = textarea.value.length;
+          if (counterEl) {
+            const ratio = len / charLimit;
+            counterEl.textContent = `${len}/${charLimit}`;
+            counterEl.style.color = ratio > 1 ? "#ef4444" : ratio > 0.9 ? "#f59e0b" : "#9ca3af";
+          }
+          // Update item message in memory
+          this._queueItems[idx].drafted_message = textarea.value;
+          // Update preview
+          const lines = textarea.value.split("\n").slice(0, 3).join("\n");
+          const pv = lines.length > 200 ? lines.slice(0, 200) + "..." : lines;
+          previewEl.textContent = pv + (textarea.value.length > pv.length ? "..." : "");
+        });
+      }
+
+      // Copy button
+      const copyBtn = document.getElementById(`${P}-oq-copy-btn-${idx}`);
+      if (copyBtn) {
+        copyBtn.addEventListener("click", () => {
+          const msg = (textarea && textarea.value) || item.drafted_message || "";
+          navigator.clipboard.writeText(msg).then(() => {
+            copyBtn.textContent = "✓ Copied!";
+            setTimeout(() => { copyBtn.textContent = "📋 Copy"; }, 2000);
+          }).catch(() => {
+            copyBtn.textContent = "❌ Failed";
+            setTimeout(() => { copyBtn.textContent = "📋 Copy"; }, 2000);
+          });
+        });
+      }
+
+      // Open Profile button
+      const openBtn = document.getElementById(`${P}-oq-open-btn-${idx}`);
+      if (openBtn) {
+        openBtn.addEventListener("click", () => {
+          const url = item.profile_url || editedProfiles[item.platform] || "";
+          if (url) window.open(url, "_blank", "noopener,noreferrer");
+        });
+      }
+    });
+
+    // ── Back button ────────────────────────────────────────────────────────
+    const backBtn = document.getElementById(`${P}-oq-back-btn`);
+    if (backBtn && backFn) {
+      backBtn.addEventListener("click", () => backFn());
+    }
+
+    // ── Mark All Sent button ───────────────────────────────────────────────
+    const sentBtn = document.getElementById(`${P}-oq-sent-btn`);
+    if (sentBtn) {
+      sentBtn.addEventListener("click", async () => {
+        sentBtn.disabled = true;
+        sentBtn.textContent = "Sending...";
+
+        // Collect checked items
+        const checkedItems = (this._queueItems || []).filter((item, idx) => {
+          const chk = document.getElementById(`${P}-oq-chk-${idx}`);
+          return chk && chk.checked;
+        });
+
+        if (checkedItems.length === 0) {
+          sentBtn.disabled = false;
+          sentBtn.textContent = "✅ Mark All Sent";
+          this._showToast("ℹ️ No items checked", "info");
+          return;
+        }
+
+        let successCount = 0;
+        const sentAt = new Date().toISOString();
+
+        for (const item of checkedItems) {
+          try {
+            if (item.item_id) {
+              await ApiClient.updateQueueItem(item.item_id, contactId, {
+                status: "sent",
+                sent_at: sentAt,
+              });
+            }
+            successCount++;
+          } catch {
+            // Continue with remaining items even if one fails
+          }
+        }
+
+        sentBtn.textContent = "✅ Mark All Sent";
+        sentBtn.disabled = false;
+        this._showToast(`✓ Sent to ${successCount} platform${successCount !== 1 ? "s" : ""}`, "success");
+      });
+    }
   },
 
   /**

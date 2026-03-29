@@ -13,6 +13,7 @@ const StorageHelper = {
    * @returns {Promise<*>}
    */
   async get(key, defaultValue = null) {
+    if (!chrome?.storage?.sync) return defaultValue;
     return new Promise((resolve) => {
       chrome.storage.sync.get({ [key]: defaultValue }, (result) => {
         resolve(result[key]);
@@ -27,6 +28,7 @@ const StorageHelper = {
    * @returns {Promise<void>}
    */
   async set(key, value) {
+    if (!chrome?.storage?.sync) return;
     return new Promise((resolve) => {
       chrome.storage.sync.set({ [key]: value }, resolve);
     });
@@ -38,6 +40,7 @@ const StorageHelper = {
    * @returns {Promise<Object>}
    */
   async getMultiple(defaults) {
+    if (!chrome?.storage?.sync) return defaults;
     return new Promise((resolve) => {
       chrome.storage.sync.get(defaults, resolve);
     });
@@ -45,6 +48,8 @@ const StorageHelper = {
 
   /**
    * Get the configured backend API URL.
+   * Falls back to the default constant if storage is unavailable
+   * (e.g. after extension reload without page refresh).
    * @returns {Promise<string>}
    */
   async getApiUrl() {
@@ -52,7 +57,7 @@ const StorageHelper = {
       GHL_ASSISTANT.STORAGE_KEYS.API_URL,
       GHL_ASSISTANT.API_BASE_URL
     );
-    return url;
+    return url || GHL_ASSISTANT.API_BASE_URL;
   },
 
   /**

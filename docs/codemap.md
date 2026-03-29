@@ -12,7 +12,7 @@
 |------|---------|-------------|
 | [`content.js`](../extension/content/content.js) | Main entry — init, attach listeners, auto-show on detail pages | `init()`, `autoShowOnPlacePage()`, `autoShowOnYelpBizPage()`, `attachListingListeners()`, `observeDOMChanges()` |
 | [`components/floating-button.js`](../extension/content/components/floating-button.js) | "⚡ Send to GHL" floating button — positioning + capture trigger | `FloatingButton { init, show, hide }` |
-| [`components/review-popup.js`](../extension/content/components/review-popup.js) | Review/edit popup before sending to GHL. Phase 2: social profile enrichment with checkbox-list UI, `checkedPlatforms` intent state, `_attachPickerHandlers` helper, candidate picker flow. | `ReviewPopup { show }` |
+| [`components/review-popup.js`](../extension/content/components/review-popup.js) | Review/edit popup before sending to GHL. Phase 2A: social profile enrichment with checkbox-list UI, `checkedPlatforms` intent state, `_attachPickerHandlers` helper, candidate picker flow. Phase 2B: `showOutreachQueue()` panel with classify step, auto-load queue, per-item copy/edit/open, mark-all-sent; `_attachOutreachQueueHandlers()`; `_tierResult` + `_queueItems` state. | `ReviewPopup { show, showOutreachQueue }` |
 | [`extractors/google-search.js`](../extension/content/extractors/google-search.js) | Google Search result extractor | `GoogleSearchExtractor { isMatch, extract, getListings }` |
 | [`extractors/google-maps.js`](../extension/content/extractors/google-maps.js) | Google Maps extractor (search + place pages) | `GoogleMapsExtractor { isMatch, extract, getListings }` |
 | [`extractors/generic.js`](../extension/content/extractors/generic.js) | Yelp, Yellow Pages, Schema.org fallback extractor | `GenericExtractor { isMatch, extract, getListings }` |
@@ -24,7 +24,7 @@
 |------|---------|
 | [`constants.js`](../extension/utils/constants.js) | `GHL_ASSISTANT` namespace, CSS prefix, source types |
 | [`storage.js`](../extension/utils/storage.js) | Chrome storage wrapper for settings |
-| [`api.js`](../extension/utils/api.js) | Backend API client for lead submission |
+| [`api.js`](../extension/utils/api.js) | Backend API client. Phase 2B: added `classifyLead()`, `createOutreachQueue()`, `getOutreachQueue()`, `draftOutreach()`, `updateQueueItem()`; `_request()` now supports PATCH. |
 
 ### Popup & Options
 
@@ -78,15 +78,28 @@ URL matched by manifest.json
 | File | Purpose | Key Endpoints |
 |------|---------|---------------|
 | [`router.py`](../backend/app/api/v1/router.py) | V1 router aggregator | Mounts leads + tags routers |
-| [`leads.py`](../backend/app/api/v1/leads.py) | Lead CRUD via GHL API | `POST /leads`, `GET /leads/{id}` |
+| [`leads.py`](../backend/app/api/v1/leads.py) | Lead CRUD via GHL API. Phase 2A: `/enrich`, `/save-profiles`, `/draft-email`. Phase 2B: `/classify`, `/draft-outreach`, `/outreach-queue` (POST/GET/PATCH). | `POST /capture`, `GET /leads`, `POST /enrich`, `POST /save-profiles`, `POST /draft-email`, `POST /classify`, `POST /draft-outreach`, `POST /outreach-queue`, `GET /outreach-queue/{id}`, `PATCH /outreach-queue/{item_id}` |
 | [`tags.py`](../backend/app/api/v1/tags.py) | Tag management via GHL API | `GET /tags`, `POST /tags` |
+
+### Models (`backend/app/models/`)
+
+| File | Purpose |
+|------|---------|
+| [`lead.py`](../backend/app/models/lead.py) | `LeadCaptureRequest`, `LeadCaptureResponse`, `LeadListResponse` |
+| [`enrich.py`](../backend/app/models/enrich.py) | Phase 2A: `EnrichRequest`, `EnrichResponse`, `SocialProfiles`, `DraftEmailRequest`, `DraftEmailResponse` |
+| [`phase2b.py`](../backend/app/models/phase2b.py) | Phase 2B: `ClassifyRequest/Response`, `DraftOutreachRequest/Response`, `OutreachQueueItem`, `CreateOutreachQueueRequest/Response`, `GetOutreachQueueResponse`, `UpdateQueueItemRequest/Response` |
 
 ### Services (`backend/app/services/`)
 
 | File | Purpose |
 |------|---------|
-| [`ghl_service.py`](../backend/app/services/ghl_service.py) | HTTP client for GoHighLevel API v2 (2021-07-28). Endpoints: `/contacts/upsert`, `/contacts/{id}/tags`, `/locations/{id}/tags`, `/locations/{id}/customFields`, `/contacts/{id}/notes`, `/contacts/{id}/tasks`. |
+| [`ghl_service.py`](../backend/app/services/ghl_service.py) | HTTP client for GoHighLevel API v2 (2021-07-28). Phase 2B adds: `add_tag()`, `trigger_workflow()`, `get_notes()`, `update_note()`. |
 | [`lead_service.py`](../backend/app/services/lead_service.py) | Lead business logic layer |
+| [`social_research_service.py`](../backend/app/services/social_research_service.py) | Phase 2A: Serper.dev social profile finder |
+| [`ai_email_drafter_service.py`](../backend/app/services/ai_email_drafter_service.py) | Phase 2A: GPT-4o-mini email drafter |
+| [`lead_classifier_service.py`](../backend/app/services/lead_classifier_service.py) | Phase 2B: GPT-4o-mini lead tier classifier (hot/warm/cold), applies GHL tag, optionally triggers GHL workflow |
+| [`outreach_drafter_service.py`](../backend/app/services/outreach_drafter_service.py) | Phase 2B: GPT-4o-mini per-platform outreach message drafter with char limits (linkedin/inmail 2000, connection_request 300, facebook/page_dm 1000, instagram/dm 1000, tiktok/dm 500) |
+| [`outreach_queue_service.py`](../backend/app/services/outreach_queue_service.py) | Phase 2B: Outreach queue CRUD via GHL Notes — create, get, update status; serializes items with `[OUTREACH_QUEUE]` prefix |
 
 ### Utils (`backend/app/utils/`)
 

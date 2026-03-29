@@ -5,7 +5,7 @@ Loads environment variables and provides application settings.
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     default_sender_name: str = ""
     default_sender_company: str = ""
     default_pitch: str = ""
+
+    # Phase 2B — GHL Workflow IDs for lead tier automation
+    ghl_workflow_id_hot: Optional[str] = None
+    ghl_workflow_id_warm: Optional[str] = None
+    ghl_workflow_id_cold: Optional[str] = None
+
+    # Phase 2B — GHL Pipeline & Stage IDs for Opportunities
+    ghl_pipeline_id: Optional[str] = None
+    ghl_stage_id_hot: Optional[str] = None
+    ghl_stage_id_warm: Optional[str] = None
+    ghl_stage_id_cold: Optional[str] = None
 
     @property
     def cors_origins(self) -> List[str]:

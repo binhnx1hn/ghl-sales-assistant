@@ -80,13 +80,29 @@ const GoogleSearchExtractor = {
       root.querySelector("[data-attrid*='website'] a[href^='http']");
     if (link) return link;
 
-    // 2) Buttons whose text contains "Website" (newer layouts, e.g. span.aSAiSd)
+    // 1b) Targeted action-button selectors (BUG-001 fix):
+    //     .bkaPDb is the "Website" action button container in Local Pack;
+    //     a[href]:has(span.aSAiSd) matches the link that wraps the "Website" label span.
+    //     These are checked BEFORE the broad a[ping] scan so the Maps place
+    //     link (which also carries ping) can never win.
+    const actionLink =
+      root.querySelector(".bkaPDb a.n1obkb[href^='http']") ||
+      root.querySelector("a[href^='http']:has(span.aSAiSd)");
+    if (actionLink) return actionLink;
+
+    // 2) Buttons whose text contains "Website" (newer layouts, e.g. span.aSAiSd).
+    //    Guard: skip any link whose href points to google.com/maps or google.com/search.
     const websiteButtons = Array.from(
       root.querySelectorAll("a[href^='http'][ping]")
     );
     for (const a of websiteButtons) {
       const label = a.textContent || "";
-      if (label.toLowerCase().includes("website")) {
+      const href = a.href || "";
+      if (
+        label.toLowerCase().includes("website") &&
+        !href.includes("google.com/maps") &&
+        !href.includes("google.com/search")
+      ) {
         return a;
       }
     }

@@ -256,6 +256,44 @@ class GHLService:
         )
         return result.get("tags", [])
 
+    # ─── Tag Operations (single tag helper) ──────────────────────────
+
+    async def add_tag(self, contact_id: str, tag: str) -> Dict[str, Any]:
+        """Add a single tag to a contact (convenience wrapper around add_tags).
+
+        Args:
+            contact_id: GHL contact ID
+            tag: Single tag name to add
+
+        Returns:
+            Updated tags data
+        """
+        return await self.add_tags(contact_id, [tag])
+
+    # ─── Workflow Operations ──────────────────────────────────────────
+
+    async def trigger_workflow(
+        self, contact_id: str, workflow_id: str
+    ) -> Dict[str, Any]:
+        """Trigger a GHL workflow for a contact.
+
+        Args:
+            contact_id: GHL contact ID
+            workflow_id: GHL workflow ID to trigger
+
+        Returns:
+            API response data
+
+        Raises:
+            GHLAPIError: If the workflow trigger fails (e.g. not configured, missing scope)
+        """
+        payload = {"event": "contact_workflow_fired"}
+        return await self._request(
+            "POST",
+            f"/contacts/{contact_id}/workflow/{workflow_id}",
+            json_data=payload,
+        )
+
     # ─── Note Operations ─────────────────────────────────────────────
 
     async def add_note(
@@ -277,6 +315,38 @@ class GHLService:
 
         return await self._request(
             "POST", f"/contacts/{contact_id}/notes", json_data=payload
+        )
+
+    async def get_notes(self, contact_id: str) -> List[Dict[str, Any]]:
+        """Get all notes for a contact.
+
+        Args:
+            contact_id: GHL contact ID
+
+        Returns:
+            List of note objects with id, body, dateAdded, etc.
+        """
+        result = await self._request("GET", f"/contacts/{contact_id}/notes")
+        return result.get("notes", [])
+
+    async def update_note(
+        self, contact_id: str, note_id: str, body: str
+    ) -> Dict[str, Any]:
+        """Update the body of an existing note on a contact.
+
+        Args:
+            contact_id: GHL contact ID
+            note_id: GHL Note ID to update
+            body: New note body text
+
+        Returns:
+            Updated note data
+        """
+        payload = {"body": body}
+        return await self._request(
+            "PUT",
+            f"/contacts/{contact_id}/notes/{note_id}",
+            json_data=payload,
         )
 
     # ─── Task Operations ─────────────────────────────────────────────
@@ -394,3 +464,69 @@ class GHLService:
             return {}
 
         return await self.update_custom_fields(contact_id, custom_fields)
+
+    # ─── Opportunity Operations ───────────────────────────────────────
+
+    async def search_opportunities(
+        self, contact_id: str, pipeline_id: str
+    ) -> Dict[str, Any]:
+        """Search for existing opportunities for a contact within a pipeline.
+
+        Args:
+            contact_id: GHL contact ID
+            pipeline_id: GHL pipeline ID to filter by
+
+        Returns:
+            Dictionary with 'opportunities' list
+        """
+        params = {
+            "location_id": self.location_id,
+            "contact_id": contact_id,
+            "pipeline_id": pipeline_id,
+        }
+        return await self._request("GET", "/opportunities/search", params=params)
+
+    async def create_opportunity(
+        self,
+        contact_id: str,
+        pipeline_id: str,
+        stage_id: str,
+        name: str,
+    ) -> Dict[str, Any]:
+        """Create a new opportunity in a GHL pipeline.
+
+        Args:
+            contact_id: GHL contact ID
+            pipeline_id: GHL pipeline ID
+            stage_id: GHL pipeline stage ID
+            name: Opportunity name (typically the business name)
+
+        Returns:
+            Created opportunity data including the new opportunity ID
+        """
+        payload = {
+            "pipelineId": pipeline_id,
+            "locationId": self.location_id,
+            "name": name,
+            "pipelineStageId": stage_id,
+            "contactId": contact_id,
+            "status": "open",
+        }
+        return await self._request("POST", "/opportunities/", json_data=payload)
+
+    async def update_opportunity_stage(
+        self, opportunity_id: str, stage_id: str
+    ) -> Dict[str, Any]:
+        """Move an existing opportunity to a new pipeline stage.
+
+        Args:
+            opportunity_id: GHL opportunity ID
+            stage_id: Target pipeline stage ID
+
+        Returns:
+            Updated opportunity data
+        """
+        payload = {"pipelineStageId": stage_id}
+        return await self._request(
+            "PUT", f"/opportunities/{opportunity_id}", json_data=payload
+        )

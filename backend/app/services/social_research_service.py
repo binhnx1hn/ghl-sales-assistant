@@ -6,6 +6,7 @@ Uses Serper.dev (Google Search API) to find public social media profiles
 All data used is publicly available — no platform login required.
 """
 
+import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 import httpx
@@ -128,27 +129,34 @@ class SocialResearchService:
                 domain = None
                 brand_slug = None
 
-        # Run searches for each platform
-        profiles: Dict[str, Optional[str]] = {}
-        candidates: Dict[str, List[str]] = {}
-        for platform in PLATFORM_DOMAINS:
+        # Run searches for all platforms concurrently — reduces latency from
+        # O(N platforms) sequential Serper calls to O(1) (slowest single platform).
+        async def _search_platform(platform: str):
             try:
                 platform_candidates = await self._find_profile_candidates(
                     business_name, platform, location,
                     domain=domain, brand_slug=brand_slug,
                     max_candidates=max_candidates,
                 )
-                candidates[platform] = platform_candidates
                 best = platform_candidates[0] if platform_candidates else None
-                profiles[platform] = best
                 logger.info("Found %s profile for '%s': %s (candidates: %d)",
                             platform, business_name, best, len(platform_candidates))
+                return platform, platform_candidates, None
             except Exception as exc:
                 logger.warning(
                     "Failed to search %s for '%s': %s", platform, business_name, exc
                 )
-                profiles[platform] = None
-                candidates[platform] = []
+                return platform, [], exc
+
+        results = await asyncio.gather(
+            *[_search_platform(p) for p in PLATFORM_DOMAINS],
+        )
+
+        profiles: Dict[str, Optional[str]] = {}
+        candidates: Dict[str, List[str]] = {}
+        for platform, platform_candidates, _err in results:
+            candidates[platform] = platform_candidates
+            profiles[platform] = platform_candidates[0] if platform_candidates else None
 
         return {"profiles": profiles, "candidates": candidates}
 

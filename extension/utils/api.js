@@ -124,6 +124,71 @@ const ApiClient = {
   },
 
   /**
+   * Phase 2B: Classify a lead as Hot/Warm/Cold using AI scoring.
+   * Calls POST /leads/classify → returns tier badge + score + reasons.
+   *
+   * @param {Object} payload - { contact_id, business_name, website, industry, city, state, lead_source, linkedin_url, trigger_workflow }
+   * @returns {Promise<Object>} ClassifyResponse { tier, score, reasons, workflow_triggered, tag_applied }
+   */
+  async classifyLead(payload) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/classify`, payload);
+  },
+
+  /**
+   * Phase 2B: Create outreach queue items with AI-drafted messages for all platforms.
+   * Calls POST /leads/outreach-queue.
+   *
+   * @param {Object} payload - { contact_id, business_name, platforms: [...], context: {...}, draft_messages: true }
+   * @returns {Promise<Object>} CreateOutreachQueueResponse { items, total_created }
+   */
+  async createOutreachQueue(payload) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/outreach-queue`, payload);
+  },
+
+  /**
+   * Phase 2B: Fetch outreach queue items for a contact.
+   * Calls GET /leads/outreach-queue/{contact_id}?status={status}.
+   *
+   * @param {string} contactId - GHL contact ID
+   * @param {string} status - 'pending' | 'sent' | 'skipped'
+   * @returns {Promise<Object>} GetOutreachQueueResponse { items, total }
+   */
+  async getOutreachQueue(contactId, status = "pending") {
+    const apiUrl = await StorageHelper.getApiUrl();
+    const params = new URLSearchParams({ status });
+    return this._request("GET", `${apiUrl}/leads/outreach-queue/${contactId}?${params.toString()}`);
+  },
+
+  /**
+   * Phase 2B: Draft a single platform outreach message using AI.
+   * Calls POST /leads/draft-outreach.
+   *
+   * @param {Object} payload - { contact_id, business_name, platform, message_type, profile_url, sender_name, sender_company, pitch }
+   * @returns {Promise<Object>} DraftOutreachResponse { platform, message_type, message, char_count, char_limit }
+   */
+  async draftOutreach(payload) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    return this._request("POST", `${apiUrl}/leads/draft-outreach`, payload);
+  },
+
+  /**
+   * Phase 2B: Update an outreach queue item status (mark sent/skipped).
+   * Calls PATCH /leads/outreach-queue/{item_id}?contact_id={contact_id}.
+   *
+   * @param {string} itemId - Queue item ID
+   * @param {string} contactId - GHL contact ID
+   * @param {Object} payload - { status: 'sent'|'skipped', sent_at: ISO string }
+   * @returns {Promise<Object>} UpdateQueueItemResponse
+   */
+  async updateQueueItem(itemId, contactId, payload) {
+    const apiUrl = await StorageHelper.getApiUrl();
+    const params = new URLSearchParams({ contact_id: contactId });
+    return this._request("PATCH", `${apiUrl}/leads/outreach-queue/${itemId}?${params.toString()}`, payload);
+  },
+
+  /**
    * Make an HTTP request to the backend API.
    * @param {string} method - HTTP method
    * @param {string} url - Full URL
@@ -139,7 +204,7 @@ const ApiClient = {
       },
     };
 
-    if (body && (method === "POST" || method === "PUT")) {
+    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
       options.body = JSON.stringify(body);
     }
 
