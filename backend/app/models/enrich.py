@@ -6,7 +6,7 @@ AI-powered email drafting endpoints.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 class EnrichRequest(BaseModel):
@@ -59,6 +59,11 @@ class EnrichResponse(BaseModel):
     profiles_found: SocialProfiles
     saved_to_ghl: bool = False
     profiles_count: int = Field(0, description="Number of profiles found")
+    candidates: Optional[Dict[str, List[str]]] = Field(
+        None,
+        description="Top candidate URLs per platform for user selection. "
+        "e.g. {'instagram': ['https://instagram.com/a', 'https://instagram.com/b']}",
+    )
 
 
 class DraftEmailRequest(BaseModel):

@@ -477,6 +477,7 @@ const ReviewPopup = {
       if (result.success) {
         const count = result.profiles_count || 0;
         const profiles = result.profiles_found || {};
+        const candidates = result.candidates || {};
 
         enrichBtn.innerHTML = `<span>🔍</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">Review before saving</div></div>`;
 
@@ -503,31 +504,103 @@ const ReviewPopup = {
           tiktok: profiles.tiktok || "",
         };
 
+        const renderCandidatePicker = (key, onDone) => {
+          const meta = platformMeta.find(p => p.key === key);
+          const list = (candidates[key] || []);
+          const current = editedProfiles[key] || "";
+
+          const itemsHtml = list.map((url, i) => {
+            const isSelected = url === current;
+            const handle = url.split("/").filter(Boolean).pop() || url;
+            return `
+              <label style="
+                display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:5px;cursor:pointer;
+                background:${isSelected ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.04)"};
+                border:1px solid ${isSelected ? "#7C3AED" : "rgba(255,255,255,0.1)"};
+                font-size:11px;
+              ">
+                <input type="radio" name="${GHL_ASSISTANT.CSS_PREFIX}-pick-${key}" value="${url}" ${isSelected ? "checked" : ""}
+                  style="accent-color:#7C3AED;cursor:pointer;" />
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d1d5db;" title="${url}">
+                  ${handle}
+                </span>
+                <a href="${url}" target="_blank" style="color:#6b7280;font-size:10px;flex-shrink:0;" onclick="event.stopPropagation()">↗</a>
+              </label>
+            `;
+          }).join("");
+
+          const noneItem = `
+            <label style="
+              display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:5px;cursor:pointer;
+              background:${!current ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.04)"};
+              border:1px solid ${!current ? "#ef4444" : "rgba(255,255,255,0.1)"};
+              font-size:11px;
+            ">
+              <input type="radio" name="${GHL_ASSISTANT.CSS_PREFIX}-pick-${key}" value="" ${!current ? "checked" : ""}
+                style="accent-color:#ef4444;cursor:pointer;" />
+              <span style="color:#9ca3af;">None / skip this platform</span>
+            </label>
+          `;
+
+          return `
+            <div style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid rgba(255,255,255,0.1);">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <img src="${meta.icon}" width="14" height="14" style="border-radius:3px;" />
+                <span style="font-size:12px;font-weight:600;color:${meta.color};">${meta.label}</span>
+                <span style="font-size:10px;opacity:0.5;margin-left:auto;">${list.length} candidate${list.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div id="${GHL_ASSISTANT.CSS_PREFIX}-pick-list-${key}" style="display:flex;flex-direction:column;gap:4px;">
+                ${itemsHtml}
+                ${noneItem}
+              </div>
+              <div style="display:flex;gap:4px;margin-top:6px;">
+                <input id="${GHL_ASSISTANT.CSS_PREFIX}-pick-custom-${key}" type="url"
+                  placeholder="Or paste custom URL..."
+                  style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                    border-radius:4px;padding:4px 7px;color:#fff;font-size:11px;outline:none;" />
+              </div>
+              <button id="${GHL_ASSISTANT.CSS_PREFIX}-pick-ok-${key}" data-key="${key}"
+                style="margin-top:6px;width:100%;padding:5px;background:#4F46E5;border:none;border-radius:5px;
+                  color:#fff;font-size:11px;font-weight:600;cursor:pointer;">
+                ✓ Use selected
+              </button>
+            </div>
+          `;
+        };
+
         const renderProfileLinks = () => {
           const found = platformMeta.filter(p => editedProfiles[p.key]);
           const notFound = platformMeta.filter(p => !editedProfiles[p.key]);
 
-          const foundHtml = found.map(({ key, label, color, icon }) => `
-            <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;" data-edit-key="${key}" title="Click to edit">
-              <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;" />
-              <a href="${editedProfiles[key]}" target="_blank" style="color:${color};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${label}</a>
-              <span style="font-size:10px;opacity:0.5;" data-edit-key="${key}">✎</span>
-            </span>
-          `).join('<span style="opacity:0.4;padding:0 2px;">·</span>');
+          const renderBadge = ({ key, label, color, icon }) => {
+            const hasCandidates = (candidates[key] || []).length > 1;
+            return `
+              <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;" data-edit-key="${key}" title="Click to edit">
+                <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;" />
+                <a href="${editedProfiles[key]}" target="_blank" style="color:${color};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${label}</a>
+                ${hasCandidates ? `<span style="font-size:9px;background:rgba(124,58,237,0.4);border-radius:3px;padding:1px 3px;color:#c4b5fd;" data-edit-key="${key}">▾${(candidates[key] || []).length}</span>` : `<span style="font-size:10px;opacity:0.5;" data-edit-key="${key}">✎</span>`}
+              </span>
+            `;
+          };
 
-          const notFoundHtml = notFound.map(({ key, label, icon }) => `
-            <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;opacity:0.4;" data-edit-key="${key}" title="Click to add ${label}">
-              <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;filter:grayscale(1);" />
-              <span style="color:#aaa;font-size:12px;">${label}</span>
-              <span style="font-size:10px;">+</span>
-            </span>
-          `).join('<span style="opacity:0.2;padding:0 2px;">·</span>');
+          const foundHtml = found.map(renderBadge).join('<span style="opacity:0.4;padding:0 2px;">·</span>');
+
+          const notFoundHtml = notFound.map(({ key, label, icon }) => {
+            const hasCandidates = (candidates[key] || []).length > 0;
+            return `
+              <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;opacity:${hasCandidates ? 0.7 : 0.4};" data-edit-key="${key}" title="Click to add ${label}">
+                <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;${hasCandidates ? "" : "filter:grayscale(1);"}" />
+                <span style="color:#aaa;font-size:12px;">${label}</span>
+                <span style="font-size:10px;">${hasCandidates ? "▾" + (candidates[key] || []).length : "+"}</span>
+              </span>
+            `;
+          }).join('<span style="opacity:0.2;padding:0 2px;">·</span>');
 
           return `
             <div style="margin-top:6px;">
-              <div style="font-size:11px;opacity:0.6;margin-bottom:4px;">Found (click to edit · click link to open):</div>
+              <div style="font-size:11px;opacity:0.6;margin-bottom:4px;">Found (click to edit · ▾N = multiple options):</div>
               <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${foundHtml}</div>
-              ${notFound.length ? `<div style="font-size:11px;opacity:0.4;margin-bottom:4px;">Not found (click + to add):</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${notFoundHtml}</div>` : ""}
+              ${notFound.length ? `<div style="font-size:11px;opacity:0.4;margin-bottom:4px;">Not found (click to add):</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${notFoundHtml}</div>` : ""}
               <button id="${GHL_ASSISTANT.CSS_PREFIX}-enrich-confirm" style="
                 margin-top:4px;width:100%;padding:7px;background:#7C3AED;border:none;border-radius:6px;
                 color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -538,6 +611,10 @@ const ReviewPopup = {
         };
 
         const renderEditInput = (key) => {
+          const hasCandidates = (candidates[key] || []).length > 0;
+          if (hasCandidates) {
+            return renderCandidatePicker(key, () => showLinks());
+          }
           const meta = platformMeta.find(p => p.key === key);
           return `
             <div style="margin-top:6px;">
@@ -566,13 +643,33 @@ const ReviewPopup = {
                 const key = el.dataset.editKey || el.closest("[data-edit-key]")?.dataset.editKey;
                 if (!key) return;
                 statusEl.innerHTML = renderEditInput(key);
-                const input = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`);
-                if (input) input.focus();
-                const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok`);
+
+                // Candidate picker flow
+                const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-ok-${key}`);
                 if (okBtn) {
                   okBtn.addEventListener("click", () => {
+                    // Check if custom URL was typed
+                    const customInput = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-custom-${key}`);
+                    const customVal = customInput?.value?.trim();
+                    if (customVal) {
+                      editedProfiles[key] = customVal;
+                    } else {
+                      // Use selected radio
+                      const selected = statusEl.querySelector(`input[name="${GHL_ASSISTANT.CSS_PREFIX}-pick-${key}"]:checked`);
+                      editedProfiles[key] = selected?.value || "";
+                    }
+                    showLinks();
+                  });
+                }
+
+                // Plain edit input flow (no candidates)
+                const plainOkBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok`);
+                if (plainOkBtn) {
+                  const input = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`);
+                  if (input) input.focus();
+                  plainOkBtn.addEventListener("click", () => {
                     const val = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`)?.value || "";
-                    editedProfiles[okBtn.dataset.key] = val.trim();
+                    editedProfiles[plainOkBtn.dataset.key] = val.trim();
                     showLinks();
                   });
                 }
@@ -587,7 +684,8 @@ const ReviewPopup = {
                 confirmBtn.textContent = "Saving...";
                 try {
                   await ApiClient.saveProfiles(contactId, editedProfiles);
-                  enrichBtn.innerHTML = `<span>✅</span><div><div>${count} profile${count !== 1 ? "s" : ""} found</div><div style="font-size:11px;opacity:0.8;">Saved to GHL contact</div></div>`;
+                  const savedCount = Object.values(editedProfiles).filter(Boolean).length;
+                  enrichBtn.innerHTML = `<span>✅</span><div><div>${savedCount} profile${savedCount !== 1 ? "s" : ""} saved</div><div style="font-size:11px;opacity:0.8;">Saved to GHL contact</div></div>`;
                   statusEl.textContent = "✅ Social profiles saved to GHL.";
                   const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
                   if (draftBtn && editedProfiles.linkedin) {

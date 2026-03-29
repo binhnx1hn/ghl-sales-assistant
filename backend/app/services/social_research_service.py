@@ -7,7 +7,6 @@ All data used is publicly available — no platform login required.
 """
 
 import logging
-import re
 from typing import Optional, Dict, Any, List
 import httpx
 
@@ -37,6 +36,13 @@ SEARCH_QUERIES_DOMAIN: Dict[str, str] = {
     "facebook": 'site:facebook.com "{domain}"',
     "instagram": 'site:instagram.com "{domain}"',
     "tiktok": 'site:tiktok.com "{domain}"',
+}
+
+# Search query templates using brand slug (domain without TLD) — best for Instagram/TikTok
+# because those platforms use @handle style, not domain names
+SEARCH_QUERIES_SLUG: Dict[str, str] = {
+    "instagram": 'site:instagram.com "{slug}"',
+    "tiktok": 'site:tiktok.com "@{slug}"',
 }
 
 
@@ -75,9 +81,33 @@ class SocialResearchService:
             Dict mapping platform name to URL (None if not found):
             {"linkedin": "...", "facebook": "...", "instagram": None, "tiktok": None}
         """
+        result = await self.search_social_profiles_with_candidates(
+            business_name=business_name, website=website, city=city, state=state
+        )
+        return result["profiles"]
+
+    async def search_social_profiles_with_candidates(
+        self,
+        business_name: str,
+        website: Optional[str] = None,
+        city: Optional[str] = None,
+        state: Optional[str] = None,
+        max_candidates: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Search for all social media profiles, returning both the best pick and
+        a list of top candidate URLs per platform for user selection.
+
+        Returns:
+            {
+                "profiles": {"linkedin": "...", ...},           # best pick per platform
+                "candidates": {"linkedin": ["...", "..."], ...} # all valid candidates
+            }
+        """
         if not self.api_key:
             logger.warning("SERPER_API_KEY not configured — skipping social research")
-            return {platform: None for platform in PLATFORM_DOMAINS}
+            empty = {platform: None for platform in PLATFORM_DOMAINS}
+            return {"profiles": empty, "candidates": {p: [] for p in PLATFORM_DOMAINS}}
 
         # Build location string for search context
         location_parts = [p for p in [city, state] if p]
@@ -99,75 +129,130 @@ class SocialResearchService:
                 brand_slug = None
 
         # Run searches for each platform
-        results: Dict[str, Optional[str]] = {}
+        profiles: Dict[str, Optional[str]] = {}
+        candidates: Dict[str, List[str]] = {}
         for platform in PLATFORM_DOMAINS:
             try:
-                url = await self._find_profile(
+                platform_candidates = await self._find_profile_candidates(
                     business_name, platform, location,
-                    domain=domain, brand_slug=brand_slug
+                    domain=domain, brand_slug=brand_slug,
+                    max_candidates=max_candidates,
                 )
-                results[platform] = url
-                logger.info("Found %s profile for '%s': %s", platform, business_name, url)
+                candidates[platform] = platform_candidates
+                best = platform_candidates[0] if platform_candidates else None
+                profiles[platform] = best
+                logger.info("Found %s profile for '%s': %s (candidates: %d)",
+                            platform, business_name, best, len(platform_candidates))
             except Exception as exc:
                 logger.warning(
                     "Failed to search %s for '%s': %s", platform, business_name, exc
                 )
-                results[platform] = None
+                profiles[platform] = None
+                candidates[platform] = []
 
-        return results
+        return {"profiles": profiles, "candidates": candidates}
 
-    async def _find_profile(
+    async def _find_profile_candidates(
         self,
         business_name: str,
         platform: str,
         location: str = "",
         domain: Optional[str] = None,
         brand_slug: Optional[str] = None,
-    ) -> Optional[str]:
+        max_candidates: int = 3,
+    ) -> List[str]:
         """
-        Search Google for a specific platform profile of a business.
+        Search Google for profile candidates of a business on a specific platform.
+
+        Uses a multi-query waterfall strategy — tries the most precise query first,
+        falls back to less precise ones. Collects up to max_candidates unique valid URLs
+        across all queries before returning.
 
         Args:
             business_name: Business name
             platform: Platform key (linkedin, facebook, instagram, tiktok)
             location: Optional location string for disambiguation
-            domain: Bare domain from website (e.g. "buffetposeidon.com") — preferred over name
-            brand_slug: unused, kept for signature compatibility
+            domain: Bare domain from website (e.g. "buffetposeidon.com")
+            brand_slug: Domain without TLD (e.g. "buffetposeidon") — critical for Instagram/TikTok
+            max_candidates: Maximum number of candidate URLs to return
 
         Returns:
-            Profile URL string or None if not found
+            List of valid profile URLs, best match first. Empty list if none found.
         """
         valid_domains = PLATFORM_DOMAINS[platform]
 
+        # Build ordered list of queries to try (most precise → least precise)
+        queries: List[str] = []
+
+        # For Instagram/TikTok: slug-based query is the most reliable
+        # because these platforms use @handle that often matches the brand slug
+        if platform in SEARCH_QUERIES_SLUG and brand_slug:
+            queries.append(SEARCH_QUERIES_SLUG[platform].format(slug=brand_slug).strip())
+
+        # Domain-based query (good for LinkedIn/Facebook, less reliable for Instagram/TikTok)
         if domain:
-            # Primary: domain-based query is more precise
-            query = SEARCH_QUERIES_DOMAIN[platform].format(domain=domain).strip()
-        else:
-            # Fallback: name + location query
-            query = SEARCH_QUERIES[platform].format(
+            queries.append(SEARCH_QUERIES_DOMAIN[platform].format(domain=domain).strip())
+
+        # Name-based fallback — strip location qualifiers from business name for better match
+        # e.g. "Buffet Poseidon Lê Văn Lương" -> "Buffet Poseidon" works better on social
+        short_name = self._shorten_business_name(business_name)
+        queries.append(SEARCH_QUERIES[platform].format(
+            name=short_name,
+            location=location,
+        ).strip())
+
+        # Full name fallback (original)
+        if short_name != business_name:
+            queries.append(SEARCH_QUERIES[platform].format(
                 name=business_name,
                 location=location,
-            ).strip()
+            ).strip())
 
-        search_results = await self._serper_search(query, num=5)
-        organic = search_results.get("organic", [])
+        # Collect unique valid candidates across all queries
+        seen: set = set()
+        collected: List[str] = []
 
-        # If domain query returned nothing, retry with name-based query
-        if not organic and domain:
-            fallback_query = SEARCH_QUERIES[platform].format(
-                name=business_name,
-                location=location,
-            ).strip()
-            search_results = await self._serper_search(fallback_query, num=5)
+        for query in queries:
+            if len(collected) >= max_candidates:
+                break
+            search_results = await self._serper_search(query, num=10)
             organic = search_results.get("organic", [])
+            for result in organic:
+                if len(collected) >= max_candidates:
+                    break
+                link = result.get("link", "")
+                cleaned = self._clean_url(link)
+                if cleaned and cleaned not in seen and self._is_valid_profile_url(link, valid_domains, business_name):
+                    seen.add(cleaned)
+                    collected.append(cleaned)
 
-        # Find the first result that matches expected domain pattern
-        for result in organic:
-            link = result.get("link", "")
-            if self._is_valid_profile_url(link, valid_domains, business_name):
-                return self._clean_url(link)
+        return collected
 
-        return None
+    def _shorten_business_name(self, business_name: str) -> str:
+        """
+        Strip trailing address/location qualifiers from a business name.
+
+        Social media handles are based on the brand name, not the full location-qualified name.
+        e.g. "Buffet Poseidon Lê Văn Lương" -> "Buffet Poseidon"
+             "Starbucks Hoàn Kiếm"           -> "Starbucks"
+
+        Heuristic: keep only the first 1-3 meaningful words (stop before Vietnamese
+        street indicators and district/ward words).
+        """
+        # Vietnamese street/location keywords that signal start of address suffix
+        location_keywords = {
+            "lê", "nguyễn", "trần", "hoàng", "đinh", "đường", "phố",
+            "quận", "huyện", "phường", "xã", "thành", "tỉnh",
+            "hà", "hồ", "đà", "cần", "bình", "long", "tây",
+        }
+        words = business_name.split()
+        result = []
+        for word in words:
+            if word.lower() in location_keywords and len(result) >= 2:
+                break
+            result.append(word)
+        shortened = " ".join(result).strip()
+        return shortened if shortened else business_name
 
     async def _serper_search(self, query: str, num: int = 5) -> Dict[str, Any]:
         """
@@ -222,6 +307,8 @@ class SocialResearchService:
             "linkedin.com/in/search", "linkedin.com/company/search",
             "/explore/", "/reel/", "/stories/", "/tv/",
             "/permalink/", "/media/", "/groups/", "/pages/",
+            # Instagram post shortcodes: /p/<id>, /tv/<id>, /reels/<id>
+            "instagram.com/p/", "instagram.com/reels/", "instagram.com/tv/",
         ]
         if any(pattern in url_lower for pattern in reject_patterns):
             return False

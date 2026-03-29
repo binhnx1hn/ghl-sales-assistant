@@ -127,13 +127,15 @@ async def enrich_lead(
     social_service = SocialResearchService()
 
     try:
-        # Search for all social profiles
-        profiles = await social_service.search_social_profiles(
+        # Search for all social profiles with candidates for user selection
+        search_result = await social_service.search_social_profiles_with_candidates(
             business_name=request.business_name,
             website=request.website,
             city=request.city,
             state=request.state,
         )
+        profiles = search_result["profiles"]
+        candidates = search_result["candidates"]
 
         # Save found profiles as GHL contact custom fields only if requested
         saved = False
@@ -164,6 +166,7 @@ async def enrich_lead(
             profiles_found=SocialProfiles(**profiles),
             saved_to_ghl=saved,
             profiles_count=profiles_count,
+            candidates=candidates,
         )
 
     except Exception as e:
