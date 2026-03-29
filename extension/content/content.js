@@ -20,41 +20,41 @@
    * Detects the current page type and sets up listing detection.
    */
   function init() {
-    // Wait a bit for dynamic content to load (especially Maps)
-    setTimeout(() => {
-      FloatingButton.init();
-      attachListingListeners();
-      observeDOMChanges();
+    FloatingButton.init();
+    attachListingListeners();
+    observeDOMChanges();
 
-      // Auto-show floating button on direct Google Maps place pages
-      autoShowOnPlacePage();
+    // Auto-show floating button on direct Google Maps place pages
+    autoShowOnPlacePage();
 
-      // Auto-show floating button on Yelp business detail pages
-      autoShowOnYelpBizPage();
-    }, 1500);
+    // Auto-show floating button on Yelp business detail pages
+    autoShowOnYelpBizPage();
   }
 
   /**
    * On direct Google Maps place pages (e.g. /maps/place/Business+Name),
    * there are no search result items to hover. Auto-show the floating
    * button anchored to the place panel.
+   *
+   * Maps renders the panel asynchronously — retry up to ~3s.
    */
   function autoShowOnPlacePage() {
     if (!GoogleMapsExtractor.isMatch()) return;
     if (!window.location.pathname.includes("/maps/place/")) return;
 
-    const nameEl = document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge");
-    if (!nameEl) return;
-
-    // Find the place panel to anchor the button
-    const placePanel =
-      document.querySelector("div[role='main'] div.m6QErb") ||
-      document.querySelector("div[role='main']") ||
-      document.querySelector("#QA0Szd");
-
-    if (placePanel) {
-      FloatingButton.show(placePanel);
-    }
+    const tryShow = (attempts = 0) => {
+      const nameEl = document.querySelector("h1.DUwDvf, h1.fontHeadlineLarge");
+      if (!nameEl) {
+        if (attempts < 10) setTimeout(() => tryShow(attempts + 1), 300);
+        return;
+      }
+      const placePanel =
+        document.querySelector("div[role='main'] div.m6QErb") ||
+        document.querySelector("div[role='main']") ||
+        document.querySelector("#QA0Szd");
+      if (placePanel) FloatingButton.show(placePanel);
+    };
+    tryShow();
   }
 
   /**
@@ -72,7 +72,6 @@
       document.querySelector(".biz-page-header");
 
     if (!contentArea) {
-      // Fallback: use the parent of the business name heading
       const h1 = document.querySelector("h1");
       if (h1 && h1.parentElement) {
         FloatingButton.show(h1.parentElement);
@@ -120,45 +119,39 @@
         ) {
           return;
         }
+        // 1200ms grace — long enough to move the mouse from listing to button
         hideTimeout = setTimeout(() => {
           FloatingButton.hide();
-        }, 800);
+        }, 1200);
       });
     });
   }
 
   /**
    * Observe DOM changes to detect dynamically loaded listings.
-   * Google Search and Maps load content dynamically, so we need
-   * to re-scan when new content appears.
+   * Scoped to subtree childList only; skips our own injected nodes.
+   * Debounced at 800ms to avoid flooding on heavy pages like Maps.
    */
   function observeDOMChanges() {
     const observer = new MutationObserver((mutations) => {
-      let hasNewContent = false;
-
       for (const mutation of mutations) {
-        if (mutation.addedNodes.length > 0) {
-          for (const node of mutation.addedNodes) {
-            if (
-              node.nodeType === Node.ELEMENT_NODE &&
-              !node.classList?.contains(GHL_ASSISTANT.CSS_PREFIX + "-overlay") &&
-              !node.classList?.contains(GHL_ASSISTANT.CSS_PREFIX + "-floating-btn") &&
-              !node.classList?.contains(GHL_ASSISTANT.CSS_PREFIX + "-toast")
-            ) {
-              hasNewContent = true;
-              break;
-            }
-          }
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          // Ignore our own injected elements
+          const cls = node.className || "";
+          if (
+            typeof cls === "string" && (
+              cls.includes(GHL_ASSISTANT.CSS_PREFIX + "-overlay") ||
+              cls.includes(GHL_ASSISTANT.CSS_PREFIX + "-floating-btn") ||
+              cls.includes(GHL_ASSISTANT.CSS_PREFIX + "-toast") ||
+              cls.includes(GHL_ASSISTANT.CSS_PREFIX + "-phase2")
+            )
+          ) continue;
+          // Only re-scan when a meaningful content node is added
+          clearTimeout(observeDOMChanges._debounce);
+          observeDOMChanges._debounce = setTimeout(attachListingListeners, 800);
+          return;
         }
-        if (hasNewContent) break;
-      }
-
-      if (hasNewContent) {
-        // Debounce re-scanning
-        clearTimeout(observeDOMChanges._debounce);
-        observeDOMChanges._debounce = setTimeout(() => {
-          attachListingListeners();
-        }, 500);
       }
     });
 
@@ -194,11 +187,11 @@
       }
       hideTimeout = setTimeout(() => {
         FloatingButton.hide();
-      }, 400);
+      }, 600);
     }
   }, true);
 
-  // Initialize when DOM is ready
+  // Initialize immediately — no blind delay
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {

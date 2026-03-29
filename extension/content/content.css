@@ -21,10 +21,14 @@
   font-size: 13px !important;
   font-weight: 600 !important;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4) !important;
-  transition: all 0.2s ease !important;
+  /* Only animate transform/opacity — avoids layout recalc that causes flicker */
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease !important;
   z-index: 2147483647 !important;
   user-select: none !important;
   white-space: nowrap !important;
+  /* Promote to GPU layer to prevent repaint flicker */
+  will-change: transform !important;
+  -webkit-font-smoothing: antialiased !important;
 }
 
 .ghl-sa-floating-btn:hover {
@@ -74,11 +78,11 @@
   align-items: center !important;
   justify-content: center !important;
   z-index: 2147483647 !important;
-  animation: ghl-sa-fade-in 0.2s ease !important;
+  animation: ghl-sa-fade-in 0.15s ease !important;
 }
 
 .ghl-sa-popup-fade-out {
-  animation: ghl-sa-fade-out 0.2s ease forwards !important;
+  animation: ghl-sa-fade-out 0.15s ease forwards !important;
 }
 
 @keyframes ghl-sa-fade-in {
@@ -102,12 +106,9 @@
   overflow-y: auto !important;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-  animation: ghl-sa-slide-up 0.3s ease !important;
-}
-
-@keyframes ghl-sa-slide-up {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  /* No slide-up animation — it causes layout jank on slower machines.
+     The overlay fade-in alone is enough visual feedback. */
+  will-change: transform !important;
 }
 
 /* ─── Popup Header ───────────────────────────────────────────── */
@@ -407,8 +408,14 @@
   font-size: 14px !important;
   font-weight: 500 !important;
   z-index: 2147483647 !important;
-  animation: ghl-sa-slide-up 0.3s ease !important;
+  animation: ghl-sa-toast-in 0.2s ease !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  will-change: transform, opacity !important;
+}
+
+@keyframes ghl-sa-toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .ghl-sa-toast-success {
