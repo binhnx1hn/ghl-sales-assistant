@@ -1,5 +1,36 @@
 # Project Log
 
+## FE: Social Profile Review — Checkbox-List UI (Phase 2 Panel)
+
+**Date**: 2026-03-29
+**Status**: ✅ Complete
+**Signal**: `fe-done` → integration
+
+### Changes Made
+
+#### [`extension/content/components/review-popup.js`](../extension/content/components/review-popup.js:507)
+
+1. **`checkedPlatforms`** object added alongside `editedProfiles` (line 507) — tracks per-platform save intent, initialized from `profiles_found`.
+
+2. **`renderProfileLinks()`** (line 579) — replaced badge+found/notFound layout with a unified **checkbox-list**:
+   - One row per platform (all 4: LinkedIn, Facebook, Instagram, TikTok)
+   - Each row: `[checkbox] [icon] [Label] [URL or "not found"] [▾N badge if candidates > 1]`
+   - Checkbox `checked` if `checkedPlatforms[key]`; `disabled` if no URL and no candidates
+   - URL truncated to 35 chars, opens in new tab; `stopPropagation` prevents edit trigger
+   - Removed hint text `(click to edit · ▾N = multiple options)` and separate "Not found" section
+   - Dark theme: `rgba(255,255,255,0.03)` row bg, `#7C3AED` checkbox accent, `#9ca3af` URL color
+
+3. **`_attachPickerHandlers(key)`** (line 652) — extracted picker+plain-edit wiring into a helper declared **before** `showLinks` to avoid `const` TDZ issues. Auto-sets `checkedPlatforms[key] = true` when a URL is confirmed.
+
+4. **`showLinks()`** (line 694) — attaches:
+   - `[data-chk-key]` `change` handlers: sync `checkedPlatforms`; opens picker if user checks a no-URL platform that has candidates
+   - `[data-edit-key]` `click` handlers (icon/label/badge): open edit/picker flow
+   - `[data-row-key]` `click` handlers (whole row, excluding checkbox + URL `<a>`): open edit/picker flow
+
+5. **`confirmBtn` handler** (line 726) — syncs checkbox DOM state → `checkedPlatforms`, builds `profilesToSave` where unchecked or empty URL = `""`, sends only checked+non-empty profiles to `ApiClient.saveProfiles`.
+
+---
+
 ## Bug Fix: Yelp `/biz/` Detail Page — "Send to GHL" Button Not Showing
 
 **Date**: 2026-03-19

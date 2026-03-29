@@ -12,7 +12,7 @@
 |------|---------|-------------|
 | [`content.js`](../extension/content/content.js) | Main entry — init, attach listeners, auto-show on detail pages | `init()`, `autoShowOnPlacePage()`, `autoShowOnYelpBizPage()`, `attachListingListeners()`, `observeDOMChanges()` |
 | [`components/floating-button.js`](../extension/content/components/floating-button.js) | "⚡ Send to GHL" floating button — positioning + capture trigger | `FloatingButton { init, show, hide }` |
-| [`components/review-popup.js`](../extension/content/components/review-popup.js) | Review/edit popup before sending to GHL | `ReviewPopup { show }` |
+| [`components/review-popup.js`](../extension/content/components/review-popup.js) | Review/edit popup before sending to GHL. Phase 2: social profile enrichment with checkbox-list UI, `checkedPlatforms` intent state, `_attachPickerHandlers` helper, candidate picker flow. | `ReviewPopup { show }` |
 | [`extractors/google-search.js`](../extension/content/extractors/google-search.js) | Google Search result extractor | `GoogleSearchExtractor { isMatch, extract, getListings }` |
 | [`extractors/google-maps.js`](../extension/content/extractors/google-maps.js) | Google Maps extractor (search + place pages) | `GoogleMapsExtractor { isMatch, extract, getListings }` |
 | [`extractors/generic.js`](../extension/content/extractors/generic.js) | Yelp, Yellow Pages, Schema.org fallback extractor | `GenericExtractor { isMatch, extract, getListings }` |

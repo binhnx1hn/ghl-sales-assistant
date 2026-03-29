@@ -504,6 +504,14 @@ const ReviewPopup = {
           tiktok: profiles.tiktok || "",
         };
 
+        // Checkbox intent state — checked = user wants to save this platform
+        const checkedPlatforms = {
+          linkedin: !!profiles.linkedin,
+          facebook: !!profiles.facebook,
+          instagram: !!profiles.instagram,
+          tiktok: !!profiles.tiktok,
+        };
+
         const renderCandidatePicker = (key, onDone) => {
           const meta = platformMeta.find(p => p.key === key);
           const list = (candidates[key] || []);
@@ -569,38 +577,48 @@ const ReviewPopup = {
         };
 
         const renderProfileLinks = () => {
-          const found = platformMeta.filter(p => editedProfiles[p.key]);
-          const notFound = platformMeta.filter(p => !editedProfiles[p.key]);
+          const rowsHtml = platformMeta.map(({ key, label, color, icon }) => {
+            const url = editedProfiles[key] || "";
+            const candidateCount = (candidates[key] || []).length;
+            const hasCandidates = candidateCount > 0;
+            const isChecked = checkedPlatforms[key];
+            const hasUrl = !!url;
+            const isDisabled = !hasUrl && !hasCandidates;
 
-          const renderBadge = ({ key, label, color, icon }) => {
-            const hasCandidates = (candidates[key] || []).length > 1;
+            const truncated = url.length > 35 ? url.slice(0, 32) + "…" : url;
+
+            const urlHtml = hasUrl
+              ? `<a href="${url}" target="_blank"
+                   style="color:#9ca3af;font-size:11px;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                   onclick="event.stopPropagation()" title="${url}">${truncated}</a>`
+              : `<span style="color:#6b7280;font-size:11px;flex:1;">not found</span>`;
+
+            const badgeHtml = candidateCount > 1
+              ? `<span style="font-size:9px;background:rgba(124,58,237,0.4);border-radius:3px;padding:1px 4px;color:#c4b5fd;flex-shrink:0;" data-edit-key="${key}">▾${candidateCount}</span>`
+              : "";
+
             return `
-              <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;" data-edit-key="${key}" title="Click to edit">
-                <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;" />
-                <a href="${editedProfiles[key]}" target="_blank" style="color:${color};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${label}</a>
-                ${hasCandidates ? `<span style="font-size:9px;background:rgba(124,58,237,0.4);border-radius:3px;padding:1px 3px;color:#c4b5fd;" data-edit-key="${key}">▾${(candidates[key] || []).length}</span>` : `<span style="font-size:10px;opacity:0.5;" data-edit-key="${key}">✎</span>`}
-              </span>
+              <div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;
+                background:rgba(255,255,255,0.03);margin-bottom:4px;border:1px solid rgba(255,255,255,0.07);
+                opacity:${isDisabled ? 0.4 : 1};"
+                data-row-key="${key}">
+                <input type="checkbox"
+                  id="${GHL_ASSISTANT.CSS_PREFIX}-chk-${key}"
+                  ${isChecked ? "checked" : ""}
+                  ${isDisabled ? "disabled" : ""}
+                  style="accent-color:#7C3AED;cursor:${isDisabled ? "default" : "pointer"};flex-shrink:0;"
+                  data-chk-key="${key}" />
+                <img src="${icon}" width="14" height="14" style="border-radius:3px;flex-shrink:0;" data-edit-key="${key}" />
+                <span style="color:${color};font-size:12px;font-weight:500;flex-shrink:0;min-width:60px;" data-edit-key="${key}">${label}</span>
+                ${urlHtml}
+                ${badgeHtml}
+              </div>
             `;
-          };
-
-          const foundHtml = found.map(renderBadge).join('<span style="opacity:0.4;padding:0 2px;">·</span>');
-
-          const notFoundHtml = notFound.map(({ key, label, icon }) => {
-            const hasCandidates = (candidates[key] || []).length > 0;
-            return `
-              <span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;opacity:${hasCandidates ? 0.7 : 0.4};" data-edit-key="${key}" title="Click to add ${label}">
-                <img src="${icon}" width="14" height="14" style="border-radius:3px;vertical-align:middle;${hasCandidates ? "" : "filter:grayscale(1);"}" />
-                <span style="color:#aaa;font-size:12px;">${label}</span>
-                <span style="font-size:10px;">${hasCandidates ? "▾" + (candidates[key] || []).length : "+"}</span>
-              </span>
-            `;
-          }).join('<span style="opacity:0.2;padding:0 2px;">·</span>');
+          }).join("");
 
           return `
             <div style="margin-top:6px;">
-              <div style="font-size:11px;opacity:0.6;margin-bottom:4px;">Found (click to edit · ▾N = multiple options):</div>
-              <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${foundHtml}</div>
-              ${notFound.length ? `<div style="font-size:11px;opacity:0.4;margin-bottom:4px;">Not found (click to add):</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;">${notFoundHtml}</div>` : ""}
+              <div style="margin-bottom:4px;">${rowsHtml}</div>
               <button id="${GHL_ASSISTANT.CSS_PREFIX}-enrich-confirm" style="
                 margin-top:4px;width:100%;padding:7px;background:#7C3AED;border:none;border-radius:6px;
                 color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
@@ -633,46 +651,79 @@ const ReviewPopup = {
 
         // Show profile links in statusEl
         if (statusEl) {
+          // Helper: attach candidate picker or plain-edit handlers after renderEditInput
+          // Declared before showLinks so it is in scope when showLinks references it
+          const _attachPickerHandlers = (key) => {
+            // Candidate picker flow
+            const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-ok-${key}`);
+            if (okBtn) {
+              okBtn.addEventListener("click", () => {
+                const customInput = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-custom-${key}`);
+                const customVal = customInput?.value?.trim();
+                if (customVal) {
+                  editedProfiles[key] = customVal;
+                } else {
+                  const selected = statusEl.querySelector(`input[name="${GHL_ASSISTANT.CSS_PREFIX}-pick-${key}"]:checked`);
+                  editedProfiles[key] = selected?.value || "";
+                }
+                // Auto-check if a URL was set
+                if (editedProfiles[key]) checkedPlatforms[key] = true;
+                showLinks();
+              });
+            }
+
+            // Plain edit input flow (no candidates)
+            const plainOkBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok`);
+            if (plainOkBtn) {
+              const input = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`);
+              if (input) input.focus();
+              plainOkBtn.addEventListener("click", () => {
+                const val = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`)?.value || "";
+                editedProfiles[plainOkBtn.dataset.key] = val.trim();
+                // Auto-check if a URL was set
+                if (editedProfiles[plainOkBtn.dataset.key]) checkedPlatforms[plainOkBtn.dataset.key] = true;
+                showLinks();
+              });
+            }
+          };
+
           const showLinks = () => {
             statusEl.innerHTML = renderProfileLinks();
 
-            // Attach edit triggers on badges
+            // Attach checkbox change handlers
+            statusEl.querySelectorAll("[data-chk-key]").forEach(chk => {
+              chk.addEventListener("change", (e) => {
+                e.stopPropagation();
+                const key = chk.dataset.chkKey;
+                checkedPlatforms[key] = chk.checked;
+                // If user checks a platform that has no URL but has candidates, open picker
+                if (chk.checked && !editedProfiles[key] && (candidates[key] || []).length > 0) {
+                  statusEl.innerHTML = renderEditInput(key);
+                  _attachPickerHandlers(key);
+                }
+              });
+            });
+
+            // Attach edit triggers on row cells (icon, label, badge — not checkbox, not URL link)
             statusEl.querySelectorAll("[data-edit-key]").forEach(el => {
               el.addEventListener("click", (e) => {
                 if (e.target.tagName === "A") return; // let link open
                 const key = el.dataset.editKey || el.closest("[data-edit-key]")?.dataset.editKey;
                 if (!key) return;
                 statusEl.innerHTML = renderEditInput(key);
+                _attachPickerHandlers(key);
+              });
+            });
 
-                // Candidate picker flow
-                const okBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-ok-${key}`);
-                if (okBtn) {
-                  okBtn.addEventListener("click", () => {
-                    // Check if custom URL was typed
-                    const customInput = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-pick-custom-${key}`);
-                    const customVal = customInput?.value?.trim();
-                    if (customVal) {
-                      editedProfiles[key] = customVal;
-                    } else {
-                      // Use selected radio
-                      const selected = statusEl.querySelector(`input[name="${GHL_ASSISTANT.CSS_PREFIX}-pick-${key}"]:checked`);
-                      editedProfiles[key] = selected?.value || "";
-                    }
-                    showLinks();
-                  });
-                }
-
-                // Plain edit input flow (no candidates)
-                const plainOkBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-ok`);
-                if (plainOkBtn) {
-                  const input = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`);
-                  if (input) input.focus();
-                  plainOkBtn.addEventListener("click", () => {
-                    const val = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-enrich-edit-input`)?.value || "";
-                    editedProfiles[plainOkBtn.dataset.key] = val.trim();
-                    showLinks();
-                  });
-                }
+            // Row-level click: clicking anywhere on the row (not checkbox, not URL) triggers edit
+            statusEl.querySelectorAll("[data-row-key]").forEach(row => {
+              row.addEventListener("click", (e) => {
+                if (e.target.tagName === "A") return;
+                if (e.target.tagName === "INPUT" && e.target.type === "checkbox") return;
+                const key = row.dataset.rowKey;
+                if (!key) return;
+                statusEl.innerHTML = renderEditInput(key);
+                _attachPickerHandlers(key);
               });
             });
 
@@ -683,13 +734,25 @@ const ReviewPopup = {
                 confirmBtn.disabled = true;
                 confirmBtn.textContent = "Saving...";
                 try {
-                  await ApiClient.saveProfiles(contactId, editedProfiles);
-                  const savedCount = Object.values(editedProfiles).filter(Boolean).length;
+                  // Sync checkbox state from DOM before saving
+                  platformMeta.forEach(({ key }) => {
+                    const chk = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-chk-${key}`);
+                    if (chk) checkedPlatforms[key] = chk.checked;
+                  });
+
+                  // Build profiles to save: only checked + non-empty urls; unchecked = ""
+                  const profilesToSave = {};
+                  platformMeta.forEach(({ key }) => {
+                    profilesToSave[key] = (checkedPlatforms[key] && editedProfiles[key]) ? editedProfiles[key] : "";
+                  });
+
+                  await ApiClient.saveProfiles(contactId, profilesToSave);
+                  const savedCount = Object.values(profilesToSave).filter(Boolean).length;
                   enrichBtn.innerHTML = `<span>✅</span><div><div>${savedCount} profile${savedCount !== 1 ? "s" : ""} saved</div><div style="font-size:11px;opacity:0.8;">Saved to GHL contact</div></div>`;
                   statusEl.textContent = "✅ Social profiles saved to GHL.";
                   const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
-                  if (draftBtn && editedProfiles.linkedin) {
-                    draftBtn.dataset.linkedinUrl = editedProfiles.linkedin;
+                  if (draftBtn && profilesToSave.linkedin) {
+                    draftBtn.dataset.linkedinUrl = profilesToSave.linkedin;
                   }
                 } catch (saveErr) {
                   confirmBtn.disabled = false;
