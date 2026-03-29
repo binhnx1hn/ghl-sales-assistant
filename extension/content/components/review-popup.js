@@ -280,47 +280,64 @@ const ReviewPopup = {
       "info"
     );
 
-    // Defensive check: in some environments the `chrome.runtime` API
-    // or `sendMessage` may not be available (e.g. if this script is
-    // evaluated outside of a proper extension context).
-    if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
-      this._showToast(
-        "❌ Cannot save lead: extension messaging API is unavailable on this page.",
-        "error"
-      );
+    // When chrome.runtime.sendMessage is unavailable (e.g. after extension reload
+    // without page refresh), fall back to calling ApiClient directly from the
+    // content script — both paths hit the same backend endpoint.
+    const messagingAvailable =
+      typeof chrome !== "undefined" &&
+      chrome.runtime &&
+      typeof chrome.runtime.sendMessage === "function";
+
+    if (!messagingAvailable) {
+      // Direct API call fallback
+      try {
+        const response = await ApiClient.captureLead(formData);
+        this._handleSaveResponse(response, formData, contactId);
+      } catch (err) {
+        this._showToast(`❌ Failed to save: ${err.message}`, "error");
+      }
       return;
     }
 
-    // Fire and don't await - background handles it
+    // Normal path: route through service worker
     chrome.runtime.sendMessage(
       { action: "captureLead", data: formData },
       (response) => {
         if (chrome.runtime.lastError) {
-          this._showToast(
-            `❌ Failed to save: ${chrome.runtime.lastError.message}`,
-            "error"
-          );
+          // Service worker disconnected — retry via direct API
+          ApiClient.captureLead(formData)
+            .then((r) => this._handleSaveResponse(r, formData, contactId))
+            .catch((err) => this._showToast(`❌ Failed to save: ${err.message}`, "error"));
           return;
         }
-        if (response && response.success) {
-          this._showToast(
-            `✅ ${response.is_new ? "New lead" : "Lead updated"}: ${formData.business_name}`,
-            "success"
-          );
-          // Phase 2A: Store contact_id and show enrichment panel
-          if (response.contact_id) {
-            this._lastContactId = response.contact_id;
-            this._lastFormData = formData;
-            this._showPhase2Panel(formData, response.contact_id);
-          }
-        } else {
-          this._showToast(
-            `❌ Error: ${response?.error || "Failed to save lead"}`,
-            "error"
-          );
-        }
+        this._handleSaveResponse(response, formData);
       }
     );
+  },
+
+  /**
+   * Handle the API response after saving a lead (shared by messaging and direct API paths).
+   * @param {Object} response
+   * @param {Object} formData
+   * @private
+   */
+  _handleSaveResponse(response, formData) {
+    if (response && response.success) {
+      this._showToast(
+        `✅ ${response.is_new ? "New lead" : "Lead updated"}: ${formData.business_name}`,
+        "success"
+      );
+      if (response.contact_id) {
+        this._lastContactId = response.contact_id;
+        this._lastFormData = formData;
+        this._showPhase2Panel(formData, response.contact_id);
+      }
+    } else {
+      this._showToast(
+        `❌ Error: ${response?.error || "Failed to save lead"}`,
+        "error"
+      );
+    }
   },
 
   /**

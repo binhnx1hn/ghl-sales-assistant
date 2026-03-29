@@ -23,12 +23,20 @@ PLATFORM_DOMAINS: Dict[str, List[str]] = {
     "tiktok": ["tiktok.com/@"],
 }
 
-# Search query templates per platform
+# Search query templates per platform — name-based fallback
 SEARCH_QUERIES: Dict[str, str] = {
     "linkedin": 'site:linkedin.com/company "{name}" {location}',
     "facebook": 'site:facebook.com "{name}" {location}',
     "instagram": 'site:instagram.com "{name}" {location}',
     "tiktok": 'site:tiktok.com "{name}" {location}',
+}
+
+# Search query templates when website domain is available — much more accurate
+SEARCH_QUERIES_DOMAIN: Dict[str, str] = {
+    "linkedin": 'site:linkedin.com/company "{domain}"',
+    "facebook": 'site:facebook.com "{domain}"',
+    "instagram": 'site:instagram.com "{domain}"',
+    "tiktok": 'site:tiktok.com "{domain}"',
 }
 
 
@@ -75,11 +83,29 @@ class SocialResearchService:
         location_parts = [p for p in [city, state] if p]
         location = " ".join(location_parts)
 
+        # Extract bare domain and brand slug from website URL
+        domain: Optional[str] = None
+        brand_slug: Optional[str] = None  # domain without TLD, e.g. "buffetposeidon"
+        if website:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(website if website.startswith("http") else f"https://{website}")
+                domain = parsed.netloc.lstrip("www.") or parsed.path.lstrip("www.").split("/")[0]
+                # Brand slug: first part of domain before the TLD
+                # e.g. "buffetposeidon.com" -> "buffetposeidon"
+                brand_slug = domain.split(".")[0] if domain else None
+            except Exception:
+                domain = None
+                brand_slug = None
+
         # Run searches for each platform
         results: Dict[str, Optional[str]] = {}
         for platform in PLATFORM_DOMAINS:
             try:
-                url = await self._find_profile(business_name, platform, location)
+                url = await self._find_profile(
+                    business_name, platform, location,
+                    domain=domain, brand_slug=brand_slug
+                )
                 results[platform] = url
                 logger.info("Found %s profile for '%s': %s", platform, business_name, url)
             except Exception as exc:
@@ -95,6 +121,8 @@ class SocialResearchService:
         business_name: str,
         platform: str,
         location: str = "",
+        domain: Optional[str] = None,
+        brand_slug: Optional[str] = None,
     ) -> Optional[str]:
         """
         Search Google for a specific platform profile of a business.
@@ -103,20 +131,37 @@ class SocialResearchService:
             business_name: Business name
             platform: Platform key (linkedin, facebook, instagram, tiktok)
             location: Optional location string for disambiguation
+            domain: Bare domain from website (e.g. "buffetposeidon.com") — preferred over name
+            brand_slug: unused, kept for signature compatibility
 
         Returns:
             Profile URL string or None if not found
         """
-        query = SEARCH_QUERIES[platform].format(
-            name=business_name,
-            location=location,
-        ).strip()
+        valid_domains = PLATFORM_DOMAINS[platform]
+
+        if domain:
+            # Primary: domain-based query is more precise
+            query = SEARCH_QUERIES_DOMAIN[platform].format(domain=domain).strip()
+        else:
+            # Fallback: name + location query
+            query = SEARCH_QUERIES[platform].format(
+                name=business_name,
+                location=location,
+            ).strip()
 
         search_results = await self._serper_search(query, num=5)
         organic = search_results.get("organic", [])
 
+        # If domain query returned nothing, retry with name-based query
+        if not organic and domain:
+            fallback_query = SEARCH_QUERIES[platform].format(
+                name=business_name,
+                location=location,
+            ).strip()
+            search_results = await self._serper_search(fallback_query, num=5)
+            organic = search_results.get("organic", [])
+
         # Find the first result that matches expected domain pattern
-        valid_domains = PLATFORM_DOMAINS[platform]
         for result in organic:
             link = result.get("link", "")
             if self._is_valid_profile_url(link, valid_domains, business_name):
