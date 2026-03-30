@@ -1016,11 +1016,37 @@ const ReviewPopup = {
       const tierHtml = renderTierBadge(this._tierResult);
       const hasItems = (this._queueItems || []).length > 0;
 
+      const emailItemHtml = `
+        <div id="${P}-oq-email-item"
+          style="display:none;padding:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+            border-radius:6px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:13px;">📧</span>
+            <span style="color:#e5e7eb;font-size:12px;font-weight:600;flex:1;">email — Cold Email</span>
+            <span id="${P}-oq-email-counter" style="font-size:10px;color:#9ca3af;flex-shrink:0;">0/2000</span>
+          </div>
+          <div id="${P}-oq-email-preview" style="color:#9ca3af;font-size:11px;line-height:1.4;white-space:pre-wrap;margin-bottom:6px;">(Draft your cold email here...)</div>
+          <div id="${P}-oq-email-edit-area" style="display:none;margin-bottom:6px;">
+            <textarea id="${P}-oq-email-textarea"
+              style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:4px;padding:6px;color:#e5e7eb;font-size:11px;line-height:1.4;
+                resize:vertical;box-sizing:border-box;min-height:80px;outline:none;"
+              rows="5" placeholder="Draft your cold email here..."></textarea>
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button id="${P}-oq-email-edit-btn"
+              style="padding:3px 7px;background:rgba(124,58,237,0.3);border:1px solid #7C3AED;
+                border-radius:4px;color:#c4b5fd;font-size:10px;cursor:pointer;">✏ Edit</button>
+            <button id="${P}-oq-email-copy-btn"
+              style="padding:3px 7px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
+                border-radius:4px;color:#e5e7eb;font-size:10px;cursor:pointer;">📋 Copy</button>
+          </div>
+        </div>
+      `;
+
       const itemsHtml = hasItems
-        ? (this._queueItems || []).map((item, idx) => renderQueueItem(item, idx)).join("")
-        : `<div id="${P}-oq-loading" style="color:#9ca3af;font-size:12px;text-align:center;padding:12px;">
-            ⏳ Drafting outreach messages...
-           </div>`;
+        ? (this._queueItems || []).map((item, idx) => renderQueueItem(item, idx)).join("") + emailItemHtml
+        : emailItemHtml;
 
       currentStatusEl.innerHTML = `
         <div style="padding:4px 0;">
@@ -1031,9 +1057,6 @@ const ReviewPopup = {
             <button id="${P}-oq-back-btn"
               style="flex:1;padding:6px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2);
                 border-radius:6px;color:#e5e7eb;font-size:11px;cursor:pointer;">← Back</button>
-            <button id="${P}-oq-sent-btn"
-              style="flex:2;padding:6px;background:#059669;border:none;
-                border-radius:6px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">✅ Mark All Sent</button>
           </div>
         </div>
       `;
@@ -1043,6 +1066,44 @@ const ReviewPopup = {
 
     // Initial render
     renderPanel();
+
+    // Auto-draft email concurrently (fire-and-forget)
+    (async () => {
+      const previewEl = document.getElementById(`${P}-oq-email-preview`);
+      if (previewEl) previewEl.textContent = "⏳ Drafting email...";
+      try {
+        const emailDraft = await ApiClient.draftEmail(
+          contactId,
+          {
+            business_name: formData.business_name || "",
+            linkedin_url: editedProfiles?.linkedin || null,
+          },
+          {
+            sender_name: formData.senderName || "",
+            sender_company: formData.senderCompany || "",
+            pitch: formData.pitch || "",
+          }
+        );
+        const fullText = `Subject: ${emailDraft.subject}\n\n${emailDraft.body}`;
+        const textareaEl = document.getElementById(`${P}-oq-email-textarea`);
+        if (textareaEl) textareaEl.value = fullText;
+        const lines = fullText.split("\n").slice(0, 3).join("\n");
+        const previewEl2 = document.getElementById(`${P}-oq-email-preview`);
+        if (previewEl2) previewEl2.textContent = lines;
+        const counterEl = document.getElementById(`${P}-oq-email-counter`);
+        if (counterEl) {
+          const ratio = fullText.length / 2000;
+          counterEl.textContent = `${fullText.length}/2000`;
+          counterEl.style.color = ratio > 1 ? "#ef4444" : ratio > 0.9 ? "#f59e0b" : "#9ca3af";
+        }
+        // Reveal card only after draft is ready
+        const emailCard = document.getElementById(`${P}-oq-email-item`);
+        if (emailCard) emailCard.style.display = "block";
+      } catch (err) {
+        const previewEl3 = document.getElementById(`${P}-oq-email-preview`);
+        if (previewEl3) previewEl3.textContent = `❌ Could not draft email: ${err.message}`;
+      }
+    })();
 
     // Auto-load queue items if none yet
     if (!this._queueItems || this._queueItems.length === 0) {
@@ -1207,46 +1268,51 @@ const ReviewPopup = {
       backBtn.addEventListener("click", () => backFn());
     }
 
-    // ── Mark All Sent button ───────────────────────────────────────────────
-    const sentBtn = document.getElementById(`${P}-oq-sent-btn`);
-    if (sentBtn) {
-      sentBtn.addEventListener("click", async () => {
-        sentBtn.disabled = true;
-        sentBtn.textContent = "Sending...";
+    // ── Email item handlers ────────────────────────────────────────────────
+    const emailEditBtn = document.getElementById(`${P}-oq-email-edit-btn`);
+    const emailEditArea = document.getElementById(`${P}-oq-email-edit-area`);
+    const emailPreviewEl = document.getElementById(`${P}-oq-email-preview`);
+    const emailTextarea = document.getElementById(`${P}-oq-email-textarea`);
+    const emailCounterEl = document.getElementById(`${P}-oq-email-counter`);
+    const EMAIL_CHAR_LIMIT = 2000;
 
-        // Collect checked items
-        const checkedItems = (this._queueItems || []).filter((item, idx) => {
-          const chk = document.getElementById(`${P}-oq-chk-${idx}`);
-          return chk && chk.checked;
+    if (emailEditBtn && emailEditArea && emailPreviewEl && emailTextarea) {
+      let emailEditing = false;
+      emailEditBtn.addEventListener("click", () => {
+        emailEditing = !emailEditing;
+        emailEditArea.style.display = emailEditing ? "block" : "none";
+        emailPreviewEl.style.display = emailEditing ? "none" : "block";
+        emailEditBtn.textContent = emailEditing ? "✓ Done" : "✏ Edit";
+        if (emailEditing) emailTextarea.focus();
+      });
+
+      emailTextarea.addEventListener("input", () => {
+        const len = emailTextarea.value.length;
+        if (emailCounterEl) {
+          const ratio = len / EMAIL_CHAR_LIMIT;
+          emailCounterEl.textContent = `${len}/${EMAIL_CHAR_LIMIT}`;
+          emailCounterEl.style.color = ratio > 1 ? "#ef4444" : ratio > 0.9 ? "#f59e0b" : "#9ca3af";
+        }
+        // Update preview
+        const lines = emailTextarea.value.split("\n").slice(0, 3).join("\n");
+        const pv = lines.length > 200 ? lines.slice(0, 200) + "..." : lines;
+        emailPreviewEl.textContent = (emailTextarea.value.length > 0
+          ? pv + (emailTextarea.value.length > pv.length ? "..." : "")
+          : "(Draft your cold email here...)");
+      });
+    }
+
+    const emailCopyBtn = document.getElementById(`${P}-oq-email-copy-btn`);
+    if (emailCopyBtn) {
+      emailCopyBtn.addEventListener("click", () => {
+        const msg = (emailTextarea && emailTextarea.value) || "";
+        navigator.clipboard.writeText(msg).then(() => {
+          emailCopyBtn.textContent = "✓ Copied!";
+          setTimeout(() => { emailCopyBtn.textContent = "📋 Copy"; }, 2000);
+        }).catch(() => {
+          emailCopyBtn.textContent = "❌ Failed";
+          setTimeout(() => { emailCopyBtn.textContent = "📋 Copy"; }, 2000);
         });
-
-        if (checkedItems.length === 0) {
-          sentBtn.disabled = false;
-          sentBtn.textContent = "✅ Mark All Sent";
-          this._showToast("ℹ️ No items checked", "info");
-          return;
-        }
-
-        let successCount = 0;
-        const sentAt = new Date().toISOString();
-
-        for (const item of checkedItems) {
-          try {
-            if (item.item_id) {
-              await ApiClient.updateQueueItem(item.item_id, contactId, {
-                status: "sent",
-                sent_at: sentAt,
-              });
-            }
-            successCount++;
-          } catch {
-            // Continue with remaining items even if one fails
-          }
-        }
-
-        sentBtn.textContent = "✅ Mark All Sent";
-        sentBtn.disabled = false;
-        this._showToast(`✓ Sent to ${successCount} platform${successCount !== 1 ? "s" : ""}`, "success");
       });
     }
   },
