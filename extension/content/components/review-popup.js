@@ -417,7 +417,7 @@ const ReviewPopup = {
             background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
             color: white; border: none; border-radius: 8px;
             padding: 10px 14px; font-size: 13px; font-weight: 600;
-            cursor: pointer; text-align: left; display: flex;
+            cursor: pointer; text-align: left; display: none;
             align-items: center; gap: 8px; transition: opacity 0.2s;
           ">
           <span>✉️</span>
@@ -783,7 +783,26 @@ const ReviewPopup = {
                   await ApiClient.saveProfiles(contactId, profilesToSave);
                   const savedCount = Object.values(profilesToSave).filter(Boolean).length;
                   enrichBtn.innerHTML = `<span>✅</span><div><div>${savedCount} profile${savedCount !== 1 ? "s" : ""} saved</div><div style="font-size:11px;opacity:0.8;">Saved to GHL contact</div></div>`;
-                  statusEl.textContent = "✅ Social profiles saved to GHL.";
+                  statusEl.innerHTML = `
+                    <div style="color:#34d399;font-size:12px;margin-bottom:8px;">✅ Social profiles saved to GHL.</div>
+                    <button id="${GHL_ASSISTANT.CSS_PREFIX}-outreach-queue-btn-post-save" style="
+                      width:100%;padding:7px;
+                      background:linear-gradient(135deg,#1d4ed8 0%,#7C3AED 100%);
+                      border:none;border-radius:6px;
+                      color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
+                      📤 Outreach Queue
+                    </button>
+                  `;
+                  const postSaveQueueBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-outreach-queue-btn-post-save`);
+                  if (postSaveQueueBtn) {
+                    postSaveQueueBtn.addEventListener("click", () => {
+                      ReviewPopup._lastContactId = contactId;
+                      ReviewPopup._lastFormData = formData;
+                      ReviewPopup._tierResult = null;
+                      ReviewPopup._queueItems = [];
+                      ReviewPopup.showOutreachQueue(contactId, formData, profilesToSave, showLinks);
+                    });
+                  }
                   const draftBtn = document.getElementById(`${GHL_ASSISTANT.CSS_PREFIX}-btn-draft`);
                   if (draftBtn && profilesToSave.linkedin) {
                     draftBtn.dataset.linkedinUrl = profilesToSave.linkedin;
@@ -997,14 +1016,6 @@ const ReviewPopup = {
       const tierHtml = renderTierBadge(this._tierResult);
       const hasItems = (this._queueItems || []).length > 0;
 
-      const classifyBtnHtml = `
-        <button id="${P}-oq-classify-btn"
-          style="width:100%;padding:7px;background:linear-gradient(135deg,#1d4ed8,#4338ca);
-            border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;">
-          🔵 Classify Lead
-        </button>
-      `;
-
       const itemsHtml = hasItems
         ? (this._queueItems || []).map((item, idx) => renderQueueItem(item, idx)).join("")
         : `<div id="${P}-oq-loading" style="color:#9ca3af;font-size:12px;text-align:center;padding:12px;">
@@ -1014,7 +1025,7 @@ const ReviewPopup = {
       currentStatusEl.innerHTML = `
         <div style="padding:4px 0;">
           <div style="font-size:12px;font-weight:600;color:#a78bfa;margin-bottom:8px;">📤 Outreach Queue</div>
-          ${this._tierResult ? tierHtml : classifyBtnHtml}
+          ${this._tierResult ? tierHtml : ""}
           <div id="${P}-oq-items-container">${itemsHtml}</div>
           <div style="display:flex;gap:6px;margin-top:8px;">
             <button id="${P}-oq-back-btn"

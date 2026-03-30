@@ -218,7 +218,14 @@ const ApiClient = {
 
       return data;
     } catch (error) {
-      if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+      const msg = error.message || "";
+      const isNetworkError =
+        msg.includes("Failed to fetch") ||
+        msg.includes("NetworkError") ||
+        msg.includes("net::ERR") ||
+        msg.includes("blocked") ||
+        error instanceof TypeError;
+      if (isNetworkError) {
         throw new Error(
           "Cannot connect to backend server. Please check that the server is running and the API URL is correct in extension settings."
         );
