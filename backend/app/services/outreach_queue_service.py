@@ -8,12 +8,12 @@ Note body format:
     [OUTREACH_QUEUE]
     item_id: oq_{contact_id}_{platform}_{unix_timestamp}
     platform: linkedin
-    message_type: inmail
+    message_type: connection_request
     status: pending
     profile_url: https://linkedin.com/company/...
     created_at: 2026-03-29T05:00:00Z
     sent_at:
-    char_limit: 2000
+    char_limit: 750
     char_count: 487
     ---MESSAGE---
     Hi [Name], I came across Sunrise Senior Living...
@@ -36,7 +36,7 @@ MESSAGE_SEPARATOR = "---MESSAGE---"
 
 # Default message_type per platform
 PLATFORM_DEFAULT_MESSAGE_TYPE = {
-    "linkedin": "inmail",
+    "linkedin": "connection_request",
     "facebook": "page_dm",
     "instagram": "dm",
     "tiktok": "dm",

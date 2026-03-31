@@ -26,6 +26,7 @@ const GHL_ASSISTANT = {
     "Beauty",
     "Nursing Homes",
     "Transportation/NEMT",
+    "Others",
   ],
 
   // CSS class prefix to avoid conflicts with page styles

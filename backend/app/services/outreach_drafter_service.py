@@ -6,7 +6,7 @@ per-platform character limits enforced in the prompt.
 
 Supported platforms and message types:
   - linkedin/inmail:              2000 chars, professional tone
-  - linkedin/connection_request:   300 chars, personal, no hard pitch
+  - linkedin/connection_request:   750 chars, personal, no hard pitch
   - facebook/page_dm:             1000 chars, conversational
   - instagram/dm:                 1000 chars, casual, emoji OK
   - tiktok/dm:                     500 chars, very brief
@@ -38,13 +38,13 @@ PLATFORM_CONFIG: Dict[Tuple[str, str], Dict[str, Any]] = {
         ),
     },
     ("linkedin", "connection_request"): {
-        "char_limit": 300,
+        "char_limit": 750,
         "tone": "personal, genuine, no hard pitch",
         "instructions": (
             "Write a LinkedIn connection request note. "
             "Be personal and genuine — no hard sales pitch. "
             "Mention a shared interest or genuine reason to connect. "
-            "STRICTLY under 300 characters."
+            "STRICTLY under 750 characters."
         ),
     },
     ("facebook", "page_dm"): {

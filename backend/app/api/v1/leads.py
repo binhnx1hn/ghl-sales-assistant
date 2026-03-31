@@ -405,7 +405,7 @@ async def classify_lead(
     description=(
         "Phase 2B: Uses OpenAI GPT-4o-mini to draft a social media outreach message "
         "with per-platform character limits enforced. "
-        "Supported combos: linkedin/inmail (2000), linkedin/connection_request (300), "
+        "Supported combos: linkedin/inmail (2000), linkedin/connection_request (750), "
         "facebook/page_dm (1000), instagram/dm (1000), tiktok/dm (500)."
     ),
 )

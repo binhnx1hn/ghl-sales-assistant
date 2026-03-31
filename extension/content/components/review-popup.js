@@ -917,7 +917,7 @@ const ReviewPopup = {
     const PLATFORM_ICONS = { linkedin: "🔗", facebook: "👤", instagram: "📸", tiktok: "🎵" };
     const MSG_TYPE_LABELS = {
       inmail: "InMail",
-      connection_request: "Connection Req.",
+      connection_request: "Connection Request (750 chars)",
       page_dm: "Page DM",
       dm: "Direct Message",
     };
@@ -1022,8 +1022,8 @@ const ReviewPopup = {
             border-radius:6px;margin-bottom:6px;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             <span style="font-size:13px;">📧</span>
-            <span style="color:#e5e7eb;font-size:12px;font-weight:600;flex:1;">email — Cold Email</span>
-            <span id="${P}-oq-email-counter" style="font-size:10px;color:#9ca3af;flex-shrink:0;">0/2000</span>
+            <span style="color:#e5e7eb;font-size:12px;font-weight:600;flex:1;">Email — Cold Email</span>
+            <span id="${P}-oq-email-counter" style="font-size:10px;color:#9ca3af;flex-shrink:0;">0 chars</span>
           </div>
           <div id="${P}-oq-email-preview" style="color:#9ca3af;font-size:11px;line-height:1.4;white-space:pre-wrap;margin-bottom:6px;">(Draft your cold email here...)</div>
           <div id="${P}-oq-email-edit-area" style="display:none;margin-bottom:6px;">
@@ -1092,9 +1092,9 @@ const ReviewPopup = {
         if (previewEl2) previewEl2.textContent = lines;
         const counterEl = document.getElementById(`${P}-oq-email-counter`);
         if (counterEl) {
-          const ratio = fullText.length / 2000;
-          counterEl.textContent = `${fullText.length}/2000`;
-          counterEl.style.color = ratio > 1 ? "#ef4444" : ratio > 0.9 ? "#f59e0b" : "#9ca3af";
+          const ratio = fullText.length / 5000;
+          counterEl.textContent = `${fullText.length} chars`;
+          counterEl.style.color = ratio > 1 ? "#f59e0b" : "#9ca3af";
         }
         // Reveal card only after draft is ready
         const emailCard = document.getElementById(`${P}-oq-email-item`);
@@ -1274,7 +1274,7 @@ const ReviewPopup = {
     const emailPreviewEl = document.getElementById(`${P}-oq-email-preview`);
     const emailTextarea = document.getElementById(`${P}-oq-email-textarea`);
     const emailCounterEl = document.getElementById(`${P}-oq-email-counter`);
-    const EMAIL_CHAR_LIMIT = 2000;
+    const EMAIL_CHAR_LIMIT = 5000;
 
     if (emailEditBtn && emailEditArea && emailPreviewEl && emailTextarea) {
       let emailEditing = false;
@@ -1289,9 +1289,8 @@ const ReviewPopup = {
       emailTextarea.addEventListener("input", () => {
         const len = emailTextarea.value.length;
         if (emailCounterEl) {
-          const ratio = len / EMAIL_CHAR_LIMIT;
-          emailCounterEl.textContent = `${len}/${EMAIL_CHAR_LIMIT}`;
-          emailCounterEl.style.color = ratio > 1 ? "#ef4444" : ratio > 0.9 ? "#f59e0b" : "#9ca3af";
+          emailCounterEl.textContent = `${len} chars`;
+          emailCounterEl.style.color = len > EMAIL_CHAR_LIMIT ? "#f59e0b" : "#9ca3af";
         }
         // Update preview
         const lines = emailTextarea.value.split("\n").slice(0, 3).join("\n");
