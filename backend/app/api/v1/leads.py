@@ -23,6 +23,8 @@ from app.models.enrich import (
     DraftEmailRequest,
     DraftEmailResponse,
     EmailDraft,
+    HotLeadWorkflowRequest,
+    HotLeadWorkflowResponse,
 )
 from app.models.phase2b import (
     ClassifyRequest,
@@ -213,6 +215,129 @@ async def save_profiles(
         return {"success": True, "contact_id": request.contact_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save profiles: {str(e)}")
+
+
+@router.post(
+    "/hot-lead-workflow",
+    response_model=HotLeadWorkflowResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request"},
+        500: {"model": ErrorResponse, "description": "AI/Search/GHL API error"},
+    },
+    summary="Run Hot Lead workflow enrichment + email suggestion",
+    description=(
+        "Automation endpoint for workflow tools: fetches recent contact notes, "
+        "finds social media profiles, saves profiles to the contact, drafts a "
+        "personalized email suggestion, and saves that suggestion as a GHL note."
+    ),
+)
+async def run_hot_lead_workflow(
+    request: HotLeadWorkflowRequest,
+    ghl_service: GHLService = Depends(get_ghl_service),
+):
+    """Single-call automation for Hot Lead state transitions."""
+    social_service = SocialResearchService()
+    drafter = AIEmailDrafterService()
+
+    try:
+        # Load contact for fallback business metadata.
+        contact = await ghl_service.get_contact(request.contact_id)
+        contact_data = contact.get("contact", contact)
+
+        business_name = (
+            request.business_name
+            or contact_data.get("companyName")
+            or contact_data.get("firstName")
+            or "Unknown Business"
+        )
+        website = request.website or contact_data.get("website")
+        city = request.city or contact_data.get("city")
+        state = request.state or contact_data.get("state")
+
+        # Pull latest notes and turn them into compact context for AI prompt.
+        notes = await ghl_service.get_notes(request.contact_id)
+        sorted_notes = sorted(
+            notes,
+            key=lambda n: n.get("dateAdded") or "",
+            reverse=True,
+        )
+        selected_notes = sorted_notes[: request.notes_limit]
+        notes_context = "\n".join(
+            [
+                f"- {note.get('body', '').strip()}"
+                for note in selected_notes
+                if note.get("body")
+            ]
+        ).strip()
+
+        # Find social profiles and save to contact custom fields.
+        search_result = await social_service.search_social_profiles_with_candidates(
+            business_name=business_name,
+            website=website,
+            city=city,
+            state=state,
+        )
+        profiles = search_result["profiles"]
+
+        profiles_saved = False
+        if any(profiles.values()):
+            await ghl_service.update_social_profiles(
+                contact_id=request.contact_id,
+                linkedin=profiles.get("linkedin"),
+                facebook=profiles.get("facebook"),
+                instagram=profiles.get("instagram"),
+                tiktok=profiles.get("tiktok"),
+            )
+            profiles_saved = True
+
+        # Draft email suggestion using social + notes context.
+        draft_result = await drafter.draft_email(
+            business_name=business_name,
+            linkedin_url=profiles.get("linkedin"),
+            sender_name=request.sender_name,
+            sender_company=request.sender_company,
+            pitch=request.pitch,
+            notes_context=notes_context or None,
+        )
+        draft_subject = draft_result.get("subject", f"Quick question about {business_name}")
+        draft_body = draft_result.get("body", "")
+        resolved_linkedin_url = draft_result.get("linkedin_url") or profiles.get("linkedin")
+
+        # Save email suggestion as note.
+        note_body = (
+            f"📧 HOT LEAD EMAIL SUGGESTION\n"
+            f"{'─' * 40}\n"
+            f"Subject: {draft_subject}\n\n"
+            f"{draft_body}\n"
+            f"{'─' * 40}\n"
+            f"LinkedIn: {resolved_linkedin_url or 'N/A'}\n"
+            f"Recent notes used: {len(selected_notes)}\n"
+            f"(Review before sending)"
+        )
+        note_result = await ghl_service.add_note(contact_id=request.contact_id, body=note_body)
+        note_id = note_result.get("note", {}).get("id") or note_result.get("id")
+
+        return HotLeadWorkflowResponse(
+            success=True,
+            contact_id=request.contact_id,
+            business_name=business_name,
+            notes_used_count=len(selected_notes),
+            profiles_found=SocialProfiles(**profiles),
+            profiles_saved_to_contact=profiles_saved,
+            draft_email=EmailDraft(subject=draft_subject, body=draft_body),
+            email_saved_as_note=True,
+            note_id=note_id,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except GHLAPIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run hot lead workflow: {str(e)}",
+        )
 
 
 @router.post(

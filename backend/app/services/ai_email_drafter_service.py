@@ -46,6 +46,9 @@ SENDER INFO:
 VALUE PROPOSITION:
 {pitch}
 
+RECENT NOTES CONTEXT:
+{notes_context}
+
 INSTRUCTIONS:
 - Reference something specific from their profile or industry
 - Keep it personal and brief (under 150 words in body)
@@ -97,6 +100,7 @@ class AIEmailDrafterService:
         sender_name: Optional[str] = None,
         sender_company: Optional[str] = None,
         pitch: Optional[str] = None,
+        notes_context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Draft a personalized cold outreach email.
@@ -107,6 +111,7 @@ class AIEmailDrafterService:
             sender_name: Sender's name (falls back to settings.default_sender_name)
             sender_company: Sender's company (falls back to settings.default_sender_company)
             pitch: Value proposition (falls back to settings.default_pitch)
+            notes_context: Optional notes from CRM to personalize better
 
         Returns:
             Dict with keys:
@@ -119,6 +124,11 @@ class AIEmailDrafterService:
         resolved_sender_name = sender_name or settings.default_sender_name or "Your Name"
         resolved_sender_company = sender_company or settings.default_sender_company or "Your Company"
         resolved_pitch = pitch or settings.default_pitch or f"We help businesses like {business_name}"
+        resolved_notes_context = (
+            notes_context.strip()
+            if notes_context and notes_context.strip()
+            else "No recent notes available."
+        )
 
         # Step 1: Fetch LinkedIn profile data if URL provided
         profile_data: Dict[str, str] = {"business_name": business_name}
@@ -155,6 +165,7 @@ class AIEmailDrafterService:
             sender_name=resolved_sender_name,
             sender_company=resolved_sender_company,
             pitch=resolved_pitch,
+            notes_context=resolved_notes_context,
         )
 
         # Step 3: Call OpenAI GPT-4o-mini

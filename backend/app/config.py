@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     api_secret_key: str = "change_this_to_a_random_secret_key"
     allowed_origins: str = "chrome-extension://your_extension_id,http://localhost:3000"
 
+    # Phase 3 — Webhook security
+    webhook_secret: Optional[str] = None
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

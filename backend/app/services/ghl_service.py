@@ -177,6 +177,17 @@ class GHLService:
             "PUT", f"/contacts/{contact_id}", json_data=contact_data
         )
 
+    async def get_contact(self, contact_id: str) -> Dict[str, Any]:
+        """Get a single contact by ID.
+
+        Args:
+            contact_id: GHL contact ID
+
+        Returns:
+            Contact data dictionary
+        """
+        return await self._request("GET", f"/contacts/{contact_id}")
+
     async def create_or_update_contact(
         self, contact_data: Dict[str, Any]
     ) -> tuple[Dict[str, Any], bool]:

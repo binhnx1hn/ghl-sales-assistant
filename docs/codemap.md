@@ -81,6 +81,13 @@ URL matched by manifest.json
 | [`leads.py`](../backend/app/api/v1/leads.py) | Lead CRUD via GHL API. Phase 2A: `/enrich`, `/save-profiles`, `/draft-email`. Phase 2B: `/classify`, `/draft-outreach`, `/outreach-queue` (POST/GET/PATCH). | `POST /capture`, `GET /leads`, `POST /enrich`, `POST /save-profiles`, `POST /draft-email`, `POST /classify`, `POST /draft-outreach`, `POST /outreach-queue`, `GET /outreach-queue/{id}`, `PATCH /outreach-queue/{item_id}` |
 | [`tags.py`](../backend/app/api/v1/tags.py) | Tag management via GHL API | `GET /tags`, `POST /tags` |
 
+### Webhook Layer (`backend/app/api/webhooks/`) — Phase 3
+
+| File | Purpose | Key Endpoints |
+|------|---------|---------------|
+| [`webhooks/__init__.py`](../backend/app/api/webhooks/__init__.py) | Empty package init | — |
+| [`webhooks/ghl.py`](../backend/app/api/webhooks/ghl.py) | GHL inbound webhook receiver. Mounted at `/webhooks` (separate from `/api/v1`). Optional `X-Webhook-Secret` HMAC-safe check. Filter chain: event type → config guard → stage ID → contactId. Enqueues `_run_hot_lead_enrichment()` background task (8-step: fetch contact → notes → social profiles → save profiles → draft email → save note). | `POST /webhooks/ghl/hot-lead` |
+
 ### Models (`backend/app/models/`)
 
 | File | Purpose |

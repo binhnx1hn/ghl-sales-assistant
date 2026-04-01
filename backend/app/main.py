@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1.router import api_router
+from app.api.webhooks.ghl import router as webhook_router
 
 # Configure Python root logger so app-level INFO logs appear in docker logs.
 logging.basicConfig(
@@ -38,6 +39,9 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix="/api/v1")
+
+# Include webhook routes (separate concern from REST API — no /api/v1 prefix)
+app.include_router(webhook_router, prefix="/webhooks")
 
 
 @app.get("/")

@@ -117,3 +117,39 @@ class DraftEmailResponse(BaseModel):
         None,
         description="LinkedIn profile data that was used to generate the email",
     )
+
+
+class HotLeadWorkflowRequest(BaseModel):
+    """Request model for Hot Lead workflow automation."""
+
+    contact_id: str = Field(..., description="GHL contact ID")
+    business_name: Optional[str] = Field(
+        None,
+        description="Business name. If empty, backend will read from contact record.",
+    )
+    website: Optional[str] = Field(None, description="Business website URL")
+    city: Optional[str] = Field(None, description="City")
+    state: Optional[str] = Field(None, description="State code")
+    sender_name: Optional[str] = Field(None, description="Sender name override")
+    sender_company: Optional[str] = Field(None, description="Sender company override")
+    pitch: Optional[str] = Field(None, description="Pitch override")
+    notes_limit: int = Field(
+        5,
+        ge=1,
+        le=20,
+        description="How many latest notes to include as context",
+    )
+
+
+class HotLeadWorkflowResponse(BaseModel):
+    """Response model for Hot Lead workflow automation."""
+
+    success: bool = True
+    contact_id: str
+    business_name: str
+    notes_used_count: int = 0
+    profiles_found: SocialProfiles
+    profiles_saved_to_contact: bool = False
+    draft_email: EmailDraft
+    email_saved_as_note: bool = False
+    note_id: Optional[str] = None

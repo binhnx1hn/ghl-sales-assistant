@@ -354,3 +354,144 @@ All 5 defects verified as fixed. No regressions detected.
 Phase 2B baseline: 27/31 checks passed in initial audit. All 4 failing checks now resolved. **31/31 pass**.
 
 **Signal**: `qc-pass` → `reviewer`
+
+---
+
+## Phase 3 QC Audit — GHL Hot Lead Webhook Receiver
+
+**Date**: 2026-04-01
+**Status**: QC-FAIL
+**Auditor**: QC Agent
+**Spec**: [`plans/phase3-spec.md`](../plans/phase3-spec.md)
+
+---
+
+### Verdict
+
+**FAIL** — 1 HIGH defect (GHL ToS / spec §2 violation: full raw payload logged on missing `contactId`, which can include PII). 2 LOW deviations are informational only. All security, filter chain, background task, error handling, config, and router mount checks pass.
+
+---
+
+### Defects
+
+#### QC-006 — Full raw payload logged on missing `contactId` (HIGH — GHL ToS + spec §2)
+
+**File**: [`backend/app/api/webhooks/ghl.py:247`](../backend/app/api/webhooks/ghl.py:247)
+**Severity**: 🔴 HIGH — GHL Terms of Service violation + spec §2 breach
+
+```python
+logger.error("Webhook missing contactId — payload: %s", payload)
+```
+
+Spec §2 (Constraints) explicitly states: *"endpoint must not store raw webhook payloads; log only the `contactId` and event type for audit; no PII written to disk."*
+
+The GHL webhook payload includes `contact.name`, `contact.companyName`, `contact.website`, `contact.city`, `contact.state`, and `name` — all PII-adjacent fields. Dumping the full `payload` dict to the log file writes this data to disk, violating both the GHL ToS constraint and the spec's explicit logging rule.
+
+**Fix**: Replace the full payload dump with only the safe fields:
+```python
+logger.error(
+    "Webhook missing contactId — event_type=%s location_id=%s",
+    payload.get("type"),
+    payload.get("locationId"),
+)
+```
+
+---
+
+#### QC-007 — Filter chain order deviates from spec §4 ordering (LOW — spec deviation, safer behaviour)
+
+**File**: [`backend/app/api/webhooks/ghl.py:234-242`](../backend/app/api/webhooks/ghl.py:234)
+**Severity**: 🟢 LOW — implementation is functionally safer, but diverges from spec numbering
+
+Spec §4 ordering: Security (4.1) → Event Type (4.2) → **Stage Filter (4.3)** → **Config Guard (4.4)** → ContactId (4.5).
+Implementation ordering: Security → Event Type → **Config Guard** → **Stage Filter** → ContactId.
+
+Config Guard runs before Stage Filter (lines 234 before 240). This prevents a null-pointer comparison (`pipeline_stage_id != None` would never match) and is the correct defensive order. However it diverges from the spec's stated sequence.
+
+**Fix** (optional): Update [`plans/phase3-spec.md`](../plans/phase3-spec.md) §4 to reflect the correct order (Config Guard before Stage Filter), or leave as-is and treat as a documentation gap.
+
+---
+
+#### QC-008 — `await request.json()` in HTTP handler (LOW — spec §9.3 letter vs intent)
+
+**File**: [`backend/app/api/webhooks/ghl.py:225`](../backend/app/api/webhooks/ghl.py:225)
+**Severity**: 🟢 LOW — `await` for body read, not for enrichment services
+
+Spec §9.3 states: *"No `await` calls in the HTTP handler (before `return`)."* The implementation has `payload = await request.json()` at line 225. This is the ASGI body-read (essentially zero network I/O; the body is already buffered by the server), not a service call. The spec's intent is to prevent blocking on GHL API / OpenAI / Serper calls — which the implementation correctly avoids. However it is technically an `await` in the handler.
+
+**Fix** (optional — informational only): No action needed. Body parse via `await request.json()` is unavoidable in FastAPI and is sub-millisecond. Spec intent is met. A note in the spec clarifying "no `await` on external services" would eliminate ambiguity.
+
+---
+
+### Checks Passed
+
+| # | Check | Result |
+|---|-------|--------|
+| S-1 | `hmac.compare_digest` used (not `==`) at [`ghl.py:216`](../backend/app/api/webhooks/ghl.py:216) | ✅ PASS |
+| S-2 | Secret check skipped when `settings.webhook_secret` is None/falsy [`ghl.py:214`](../backend/app/api/webhooks/ghl.py:214) | ✅ PASS |
+| S-3 | Returns `HTTP 401 {"detail": "Invalid webhook secret"}` on mismatch [`ghl.py:221`](../backend/app/api/webhooks/ghl.py:221) | ✅ PASS |
+| S-4 | Missing header with secret configured → 401 (provided = `""` fails `compare_digest`) | ✅ PASS |
+| F-1 | Secret check is FIRST in handler (line 214, before `request.json()`) | ✅ PASS |
+| F-2 | Event type filter: non-`OpportunityStageUpdate` → 200 + skip + `INFO` log [`ghl.py:229-231`](../backend/app/api/webhooks/ghl.py:229) | ✅ PASS |
+| F-3 | Config guard: `ghl_stage_id_hot` not set → 200 + skip + `WARNING` log [`ghl.py:234-236`](../backend/app/api/webhooks/ghl.py:234) | ✅ PASS |
+| F-4 | Stage filter: wrong `pipelineStageId` → 200 + skip + `INFO` log [`ghl.py:240-242`](../backend/app/api/webhooks/ghl.py:240) | ✅ PASS |
+| F-5 | ContactId check: missing → 200 + skip + `ERROR` log [`ghl.py:246-248`](../backend/app/api/webhooks/ghl.py:246) | ✅ PASS (log content: see QC-006) |
+| A-1 | No enrichment service `await` calls in handler body | ✅ PASS |
+| A-2 | Enrichment dispatched via `background_tasks.add_task()` [`ghl.py:260`](../backend/app/api/webhooks/ghl.py:260) | ✅ PASS |
+| A-3 | Handler returns `{"received": True}` immediately [`ghl.py:276`](../backend/app/api/webhooks/ghl.py:276) | ✅ PASS |
+| B-1 | `_run_hot_lead_enrichment` is `async` [`ghl.py:31`](../backend/app/api/webhooks/ghl.py:31) | ✅ PASS |
+| B-2 | Step 1: Services instantiated directly (no `Depends`) [`ghl.py:44-50`](../backend/app/api/webhooks/ghl.py:44) | ✅ PASS |
+| B-3 | Step 2: `get_contact()` called, metadata resolved with fallbacks [`ghl.py:54-73`](../backend/app/api/webhooks/ghl.py:54) | ✅ PASS |
+| B-4 | Step 3: `get_notes()` sorted desc, first 5 taken [`ghl.py:77-98`](../backend/app/api/webhooks/ghl.py:77) | ✅ PASS |
+| B-5 | Step 4: `search_social_profiles_with_candidates()` called [`ghl.py:103-115`](../backend/app/api/webhooks/ghl.py:103) | ✅ PASS |
+| B-6 | Step 5: `update_social_profiles()` called if any profiles found [`ghl.py:118-132`](../backend/app/api/webhooks/ghl.py:118) | ✅ PASS |
+| B-7 | Step 6: `draft_email()` called [`ghl.py:137-153`](../backend/app/api/webhooks/ghl.py:137) | ✅ PASS |
+| B-8 | Step 7: email saved as GHL note with `📧 HOT LEAD EMAIL SUGGESTION` prefix [`ghl.py:156-177`](../backend/app/api/webhooks/ghl.py:156) | ✅ PASS |
+| B-9 | Step 8: success logged [`ghl.py:180-184`](../backend/app/api/webhooks/ghl.py:180) | ✅ PASS |
+| B-10 | Top-level `try/except Exception` wraps all steps [`ghl.py:42`](../backend/app/api/webhooks/ghl.py:42) | ✅ PASS |
+| E-1 | `get_contact` error → `logger.error` + `return` (abort enrichment) [`ghl.py:55-62`](../backend/app/api/webhooks/ghl.py:55) | ✅ PASS |
+| E-2 | `get_notes` error → `logger.warning` + continue with empty notes [`ghl.py:78-84`](../backend/app/api/webhooks/ghl.py:78) | ✅ PASS |
+| E-3 | `SocialResearchService` exception → `logger.error` + continue [`ghl.py:110-115`](../backend/app/api/webhooks/ghl.py:110) | ✅ PASS |
+| E-4 | `AIEmailDrafterService` exception → `logger.error` + continue [`ghl.py:148-153`](../backend/app/api/webhooks/ghl.py:148) | ✅ PASS |
+| E-5 | `add_note` error → `logger.error` + continue [`ghl.py:172-177`](../backend/app/api/webhooks/ghl.py:172) | ✅ PASS |
+| E-6 | Unhandled exception → `logger.exception(...)` [`ghl.py:186-189`](../backend/app/api/webhooks/ghl.py:186) | ✅ PASS |
+| N-1 | No `httpx` import, no self-HTTP call to `/api/v1/leads/hot-lead-workflow` | ✅ PASS |
+| C-1 | `webhook_secret: Optional[str] = None` in `Settings` [`config.py:24`](../backend/app/config.py:24) | ✅ PASS |
+| C-2 | `.env.example` has `WEBHOOK_SECRET=` with comment [`.env.example:46`](../backend/.env.example:46) | ✅ PASS |
+| R-1 | Webhook router mounted at `/webhooks` in `main.py` [`main.py:44`](../backend/app/main.py:44) | ✅ PASS |
+| R-2 | v1 router (`/api/v1`) untouched [`main.py:41`](../backend/app/main.py:41) | ✅ PASS |
+| T-1 | `webhooks/__init__.py` is empty [`__init__.py`](../backend/app/api/webhooks/__init__.py) | ✅ PASS |
+| P-1 | contactId and event_type logged (not PII fields) — except QC-006 fallback | ✅ PASS (QC-006 fixed) |
+
+---
+
+### Summary
+
+| ID | Severity | Issue | Status |
+|----|----------|-------|--------|
+| QC-006 | 🔴 HIGH | Full raw payload logged on missing `contactId` — PII leak, GHL ToS + spec §2 breach | ✅ CLOSED |
+| QC-007 | 🟢 LOW | Filter chain order: Config Guard before Stage Filter (spec says reverse) — safer but deviates | 🟢 INFORMATIONAL |
+| QC-008 | 🟢 LOW | `await request.json()` in handler — spec letter says no `await`; intent is met | 🟢 INFORMATIONAL |
+
+35/35 checks pass. 0 HIGH defects. Release unblocked.
+
+**Signal**: `qc-pass` → `reviewer`
+
+---
+
+### QC-006 Re-Audit
+
+**Date**: 2026-04-01
+**Fix verified**: YES
+**Syntax**: PASS
+
+#### Evidence
+
+- [`ghl.py:247-251`](../backend/app/api/webhooks/ghl.py:247) — `logger.error(...)` now logs only `payload.get("type")` and `payload.get("locationId")`. Raw `payload` dump is **gone**. No `contact.*` PII fields present.
+- `python -m py_compile backend/app/api/webhooks/ghl.py` → **exit 0**
+
+**Result**: QC-006 CLOSED
+
+**Phase 3 QC Audit overall verdict**: ✅ **QC-PASS**
+
+**Signal**: `qc-pass` → `pm`
