@@ -224,41 +224,144 @@ async def receive_hot_lead_webhook(
     # we handle missing-key scenarios below.
     payload: Dict[str, Any] = await request.json()
 
+    # Debug log: print all received keys so client mis-config is easy to spot
+    logger.info("Webhook received — keys=%s", list(payload.keys()))
+
+    # ── Normalise payload ──────────────────────────────────────────────────────
+    # GHL Workflow "Webhook" action sends data in several shapes depending on
+    # how the client configured the action (custom data vs. auto-send contact).
+    # We normalise everything into a single flat dict before validation.
+    #
+    # Shape A — client added custom key-value pairs (our preferred format):
+    #   {"type": "OpportunityStageUpdate", "contactId": "...", "pipelineStageId": "..."}
+    #
+    # Shape B — GHL auto-send contact data (no custom keys):
+    #   {"contact_id": "...", "company_name": "...", "triggerData": {...}, ...}
+    #   In this case there is NO "type" or "pipelineStageId" at top level.
+    #   We reconstruct them from triggerData / nested objects.
+    #
+    # Shape C — mixed / partial config (some custom keys + GHL auto fields)
+
+    import json as _json
+
+    # Resolve contact_id — camelCase OR snake_case
+    contact_id: Optional[str] = (
+        payload.get("contactId")
+        or payload.get("contact_id")
+        or None
+    )
+
+    # Resolve pipeline stage id — camelCase, snake_case, or typo variant
+    pipeline_stage_id: str = (
+        payload.get("pipelineStageId")
+        or payload.get("pipelineStagelc")   # client typo: lc vs Id
+        or payload.get("pipeline_stage_id")
+        or ""
+    )
+
+    # Resolve type — if not set by client, treat any hit on this endpoint
+    # as an OpportunityStageUpdate (client configured the trigger correctly,
+    # just forgot to add the "type" custom key).
+    event_type: str = payload.get("type", "") or "OpportunityStageUpdate"
+
+    # Parse nested contact object (dict OR JSON string)
+    raw_contact = payload.get("contact")
+    contact_obj: Dict[str, Any] = {}
+    if isinstance(raw_contact, dict):
+        contact_obj = raw_contact
+    elif isinstance(raw_contact, str):
+        try:
+            parsed = _json.loads(raw_contact)
+            if isinstance(parsed, dict):
+                contact_obj = parsed
+        except Exception:
+            pass
+
+    # Extract triggerData sub-object (GHL auto-send mode)
+    trigger_data: Dict[str, Any] = payload.get("triggerData") or {}
+    if isinstance(trigger_data, str):
+        try:
+            trigger_data = _json.loads(trigger_data) or {}
+        except Exception:
+            trigger_data = {}
+
+    # Resolve business name — try all known key variants
+    business_name: Optional[str] = (
+        payload.get("companyName")
+        or payload.get("company_name")
+        or contact_obj.get("companyName")
+        or contact_obj.get("company_name")
+        or trigger_data.get("companyName")
+        or payload.get("name")
+        or contact_obj.get("name")
+        or None
+    )
+
+    # Resolve website
+    website: Optional[str] = (
+        payload.get("website")
+        or contact_obj.get("website")
+        or trigger_data.get("website")
+        or None
+    )
+
+    # Resolve city / state
+    city: Optional[str] = (
+        payload.get("city")
+        or contact_obj.get("city")
+        or trigger_data.get("city")
+        or None
+    )
+    state: Optional[str] = (
+        payload.get("state")
+        or contact_obj.get("state")
+        or trigger_data.get("state")
+        or None
+    )
+
+    logger.info(
+        "Webhook normalised — event_type=%r contact_id=%s pipeline_stage_id=%r "
+        "business_name=%s website=%s",
+        event_type, contact_id, pipeline_stage_id, business_name, website,
+    )
+
+    # ── Validation ────────────────────────────────────────────────────────────
+
     # 2. Event type filter
-    event_type = payload.get("type", "")
     if event_type != "OpportunityStageUpdate":
-        logger.info("Ignored webhook event type: %s", event_type)
-        return {"received": True}
-
-    # 3. Config guard
-    if not settings.ghl_stage_id_hot:
-        logger.warning("GHL_STAGE_ID_HOT not configured — webhook received but ignored")
-        return {"received": True}
-
-    # 4. Stage filter
-    pipeline_stage_id = payload.get("pipelineStageId", "")
-    if pipeline_stage_id != settings.ghl_stage_id_hot:
-        logger.info("Ignored stage transition: pipelineStageId=%s", pipeline_stage_id)
-        return {"received": True}
-
-    # 5. ContactId presence check
-    contact_id = payload.get("contactId")
-    if not contact_id:
-        logger.error(
-            "Webhook missing contactId — type=%s locationId=%s",
-            payload.get("type"),
-            payload.get("locationId"),
+        logger.warning(
+            "Ignored webhook — type=%r (expected 'OpportunityStageUpdate')",
+            event_type,
         )
         return {"received": True}
 
-    # Extract optional metadata (webhook contact sub-object takes precedence)
-    contact_obj: Dict[str, Any] = payload.get("contact") or {}
-    business_name: Optional[str] = (
-        contact_obj.get("companyName") or payload.get("name") or None
-    )
-    website: Optional[str] = contact_obj.get("website") or None
-    city: Optional[str] = contact_obj.get("city") or None
-    state: Optional[str] = contact_obj.get("state") or None
+    # 3. Config guard
+    pipeline_configs = settings.opportunity_pipeline_configs
+    hot_stage_ids = {
+        config["hot"] for config in pipeline_configs if config.get("hot")
+    }
+    if not hot_stage_ids:
+        logger.warning("GHL_STAGE_ID_HOT not configured — webhook received but ignored")
+        return {"received": True}
+
+    # 4. Stage filter — skip only if a stage id WAS provided but doesn't match.
+    # If no stage id at all (client didn't add the key), pass through and let
+    # the contact_id drive the enrichment.
+    if pipeline_stage_id and pipeline_stage_id not in hot_stage_ids:
+        logger.warning(
+            "Ignored stage transition — pipelineStageId=%r not in hot_stage_ids=%s",
+            pipeline_stage_id,
+            hot_stage_ids,
+        )
+        return {"received": True}
+
+    # 5. ContactId presence check
+    if not contact_id:
+        logger.error(
+            "Webhook missing contactId — all keys=%s",
+            list(payload.keys()),
+        )
+        return {"received": True}
 
     # 6. Enqueue background enrichment (non-blocking)
     background_tasks.add_task(

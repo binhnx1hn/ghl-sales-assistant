@@ -193,51 +193,69 @@ class LeadClassifierService:
                 )
 
         # Step 5: Upsert GHL Opportunity (graceful fallback — never raises 500)
-        TIER_TO_STAGE = {
-            "hot": settings.ghl_stage_id_hot,
-            "warm": settings.ghl_stage_id_warm,
-            "cold": settings.ghl_stage_id_cold,
-        }
-        stage_id = TIER_TO_STAGE.get(tier)
+        pipeline_configs = settings.opportunity_pipeline_configs
         opportunity_action: Optional[str] = None
         opportunity_id: Optional[str] = None
 
-        if settings.ghl_pipeline_id and stage_id:
+        if pipeline_configs:
             try:
-                search_result = await ghl_service.search_opportunities(
-                    contact_id, settings.ghl_pipeline_id
-                )
-                opportunities = search_result.get("opportunities", [])
+                opportunity_ids: list[str] = []
+                action_set: set[str] = set()
 
-                if opportunities:
-                    opp_id = opportunities[0]["id"]
-                    await ghl_service.update_opportunity_stage(opp_id, stage_id)
-                    opportunity_action = "updated"
-                    opportunity_id = opp_id
-                    logger.info(
-                        "Updated opportunity %s to stage %s for contact %s (tier: %s)",
-                        opp_id,
-                        stage_id,
-                        contact_id,
-                        tier,
+                for config in pipeline_configs:
+                    stage_id = config.get(tier)
+                    pipeline_id = config.get("pipeline_id")
+                    if not stage_id or not pipeline_id:
+                        continue
+
+                    search_result = await ghl_service.search_opportunities(
+                        contact_id, pipeline_id
                     )
-                else:
-                    result = await ghl_service.create_opportunity(
-                        contact_id=contact_id,
-                        pipeline_id=settings.ghl_pipeline_id,
-                        stage_id=stage_id,
-                        name=business_name,
-                    )
+                    opportunities = search_result.get("opportunities", [])
+
+                    if opportunities:
+                        opp_id = opportunities[0]["id"]
+                        await ghl_service.update_opportunity_stage(opp_id, stage_id)
+                        action_set.add("updated")
+                        opportunity_ids.append(opp_id)
+                        logger.info(
+                            "Updated opportunity %s to stage %s in pipeline %s for contact %s (tier: %s)",
+                            opp_id,
+                            stage_id,
+                            pipeline_id,
+                            contact_id,
+                            tier,
+                        )
+                    else:
+                        result = await ghl_service.create_opportunity(
+                            contact_id=contact_id,
+                            pipeline_id=pipeline_id,
+                            stage_id=stage_id,
+                            name=business_name,
+                        )
+                        action_set.add("created")
+                        opp = result.get("opportunity", result)
+                        created_id = opp.get("id")
+                        if created_id:
+                            opportunity_ids.append(created_id)
+                        logger.info(
+                            "Created opportunity %s in pipeline %s for contact %s (tier: %s)",
+                            created_id,
+                            pipeline_id,
+                            contact_id,
+                            tier,
+                        )
+
+                if "created" in action_set and "updated" in action_set:
+                    opportunity_action = "mixed"
+                elif "created" in action_set:
                     opportunity_action = "created"
-                    # GHL returns opportunity under "opportunity" key
-                    opp = result.get("opportunity", result)
-                    opportunity_id = opp.get("id")
-                    logger.info(
-                        "Created opportunity %s for contact %s (tier: %s)",
-                        opportunity_id,
-                        contact_id,
-                        tier,
-                    )
+                elif "updated" in action_set:
+                    opportunity_action = "updated"
+                else:
+                    opportunity_action = "skipped"
+
+                opportunity_id = ",".join(opportunity_ids) if opportunity_ids else None
             except Exception as exc:
                 logger.warning(
                     "Could not upsert opportunity for contact %s: %s", contact_id, exc

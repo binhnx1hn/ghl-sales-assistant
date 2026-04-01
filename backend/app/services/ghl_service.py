@@ -441,10 +441,18 @@ class GHLService:
         facebook: Optional[str] = None,
         instagram: Optional[str] = None,
         tiktok: Optional[str] = None,
+        industry: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Convenience method: update social profile custom fields on a contact.
 
         Only sends fields that have a non-None value, so partial updates are safe.
+
+        Field keys verified against GHL location Z95sUcB7HCIqWKfjX3SD custom fields:
+          LinkedIn URL  → contact.linkedin_url   (id: YifzXym9xN2FViE79ab4)
+          Facebook Link → contact.facebook_link  (id: OeqQCDk5QyeFDem9odfo)
+          Instagram Link→ contact.instagram_link (id: h2uHEONLVQ1VQV5fuLcf)
+          TikTok URL    → contact.tiktok_url     (id: to be created in GHL)
+          Industry      → contact.industries     (id: SwLAasH7Zryjb4eKnh86)
 
         Args:
             contact_id: GHL contact ID
@@ -452,15 +460,24 @@ class GHLService:
             facebook: Facebook URL
             instagram: Instagram URL
             tiktok: TikTok URL
+            industry: Industry name
 
         Returns:
             Updated contact data or empty dict if nothing to update
         """
+        # GHL requires UUID field IDs (not fieldKey strings) when writing customFields.
+        # IDs verified against location Z95sUcB7HCIqWKfjX3SD:
+        #   LinkedIn URL   → YifzXym9xN2FViE79ab4  (fieldKey: contact.linkedin_url)
+        #   Facebook Link  → OeqQCDk5QyeFDem9odfo  (fieldKey: contact.facebook_link)
+        #   Instagram Link → h2uHEONLVQ1VQV5fuLcf  (fieldKey: contact.instagram_link)
+        #   TikTok URL     → xqoLQneBsXV495K0pJew  (fieldKey: contact.tiktok_url)
+        #   Industry       → SwLAasH7Zryjb4eKnh86  (fieldKey: contact.industries)
         fields_map = {
-            "linkedin_url": linkedin,
-            "facebook_url": facebook,
-            "instagram_url": instagram,
-            "tiktok_url": tiktok,
+            "YifzXym9xN2FViE79ab4": linkedin,
+            "OeqQCDk5QyeFDem9odfo": facebook,
+            "h2uHEONLVQ1VQV5fuLcf": instagram,
+            "xqoLQneBsXV495K0pJew": tiktok,
+            "SwLAasH7Zryjb4eKnh86": industry,
         }
 
         # Only include fields that have a value
