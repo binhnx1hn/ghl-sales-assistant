@@ -29,6 +29,10 @@ const GoogleSearchExtractor = {
     const localResult = this._extractFromLocalPack(targetElement);
     if (localResult) return localResult;
 
+    // Try to extract from #local-place-viewer panel
+    const localPlaceResult = this._extractFromLocalPlaceViewer(targetElement);
+    if (localPlaceResult) return localPlaceResult;
+
     // Try to extract from knowledge panel (right sidebar)
     const knowledgeResult = this._extractFromKnowledgePanel();
     if (knowledgeResult) return knowledgeResult;
@@ -56,7 +60,23 @@ const GoogleSearchExtractor = {
     const knowledgePanel = document.querySelector("[data-attrid='title']");
     if (knowledgePanel) {
       const panel = knowledgePanel.closest(".kp-wholepage, .knowledge-panel, .liYKde");
-      if (panel) listings.push(panel);
+      if (panel && !listings.includes(panel)) listings.push(panel);
+    }
+
+    // Local place viewer panel (rendered when clicking a listing in the local pack,
+    // e.g. URL contains #sv=... — Google renders a side panel with class .kp-wholepage
+    // or a dedicated place panel that may not have [data-cid] on the root).
+    const placePanel = document.querySelector(".kp-wholepage, .liYKde");
+    if (placePanel && !listings.includes(placePanel)) {
+      listings.push(placePanel);
+    }
+
+    // #local-place-viewer panel (id="local-place-viewer", class="yf") — rendered when
+    // the user clicks a local pack listing; contains h2.BK5CCe for name, [data-phone-number]
+    // for phone, and .bkaPDb a.n1obkb for website. Not matched by any other selector above.
+    const localPlaceViewer = document.querySelector("#local-place-viewer");
+    if (localPlaceViewer && !listings.includes(localPlaceViewer)) {
+      listings.push(localPlaceViewer);
     }
 
     return listings;
@@ -140,6 +160,7 @@ const GoogleSearchExtractor = {
       element.closest(".VkpGBb") ||
       element.closest("[jscontroller]");
 
+    // #local-place-viewer is handled by _extractFromLocalPlaceViewer; skip here.
     if (!container) return null;
 
     const data = {
@@ -291,6 +312,109 @@ const GoogleSearchExtractor = {
       }
     }
     return social;
+  },
+
+  /**
+   * Extract business data from the #local-place-viewer panel.
+   * This panel (id="local-place-viewer", class="yf") is rendered when the user
+   * clicks a listing in the local pack. It uses different selectors than the
+   * standard local pack card: h2.BK5CCe for name, [data-phone-number] attr for
+   * phone, .bkaPDb a.n1obkb for website, .Bye9Fc for rating.
+   * @param {HTMLElement} element
+   * @returns {Object|null}
+   */
+  _extractFromLocalPlaceViewer(element) {
+    const panel =
+      element.closest("#local-place-viewer") ||
+      (element.id === "local-place-viewer" ? element : null) ||
+      document.querySelector("#local-place-viewer");
+
+    if (!panel) return null;
+
+    const data = {
+      businessName: "",
+      phone: "",
+      website: "",
+      address: "",
+      city: "",
+      state: "",
+      rating: "",
+      socialLinks: { linkedin: "", facebook: "", instagram: "", tiktok: "" },
+      sourceUrl: window.location.href,
+      sourceType: GHL_ASSISTANT.SOURCE_TYPES.GOOGLE_SEARCH,
+    };
+
+    // Business name: h2.BK5CCe is the primary heading in this panel
+    const nameEl =
+      panel.querySelector("h2.BK5CCe") ||
+      panel.querySelector("h2") ||
+      panel.querySelector("[data-attrid='title']");
+    if (nameEl) {
+      const clone = nameEl.cloneNode(true);
+      clone.querySelectorAll("a, button").forEach((el) => el.remove());
+      data.businessName = clone.textContent.trim();
+    }
+
+    // Phone: data-phone-number attribute on anchor elements
+    const phoneAnchor = panel.querySelector("a[data-phone-number]");
+    if (phoneAnchor) {
+      const raw = phoneAnchor.getAttribute("data-phone-number") || "";
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length >= 10) {
+        // Display text is in nested .C9waJd div; fall back to raw attribute
+        const displayEl = phoneAnchor.querySelector(".C9waJd");
+        data.phone = (displayEl ? displayEl.textContent.trim() : "") || raw;
+      }
+    }
+
+    // Fallback phone selectors
+    if (!data.phone) {
+      const phoneSelectors = [
+        "[data-attrid*='phone'] .LrzXr",
+        "[data-attrid*='phone'] span",
+        "[data-dtype='d3ph'] .LrzXr",
+      ];
+      for (const sel of phoneSelectors) {
+        const el = panel.querySelector(sel);
+        if (el) {
+          const text = el.textContent.trim();
+          if (text.replace(/\D/g, "").length >= 10) {
+            data.phone = text;
+            break;
+          }
+        }
+      }
+    }
+
+    // Website: .bkaPDb a.n1obkb is the "Website" action button in this panel
+    const websiteLink = this._findWebsiteLink(panel);
+    if (websiteLink) data.website = websiteLink.href;
+
+    // Address
+    const addressEl =
+      panel.querySelector(".C9waJd.y7xX3d span") ||
+      panel.querySelector(".y7xX3d span") ||
+      panel.querySelector("[data-attrid*='address'] .LrzXr") ||
+      panel.querySelector("[data-attrid*='address']");
+    if (addressEl) {
+      data.address = addressEl.textContent.trim();
+      const parts = this._parseCityState(data.address);
+      data.city = parts.city;
+      data.state = parts.state;
+    }
+
+    // Rating: .Bye9Fc is the rating span in this panel
+    const ratingEl =
+      panel.querySelector(".Bye9Fc") ||
+      panel.querySelector("span.Aq14fc") ||
+      panel.querySelector("span.yi40Hd");
+    if (ratingEl) {
+      data.rating = ratingEl.textContent.trim();
+    }
+
+    data.socialLinks = this._extractSocialLinks(panel);
+
+    return data.businessName ? data : null;
   },
 
   /**

@@ -29,6 +29,23 @@
 
     // Auto-show floating button on Yelp business detail pages
     autoShowOnYelpBizPage();
+
+    // Auto-show floating button when #local-place-viewer panel is already present
+    autoShowOnLocalPlaceViewer();
+  }
+
+  /**
+   * Auto-show the floating button when #local-place-viewer is present.
+   * Called on init and from observeDOMChanges when the panel appears.
+   */
+  function autoShowOnLocalPlaceViewer() {
+    if (!GoogleSearchExtractor.isMatch()) return;
+    const panel = document.querySelector("#local-place-viewer");
+    if (!panel) return;
+    // Only auto-show if the panel has a visible business name
+    const nameEl = panel.querySelector("h2.BK5CCe, h2, [data-attrid='title']");
+    if (!nameEl || !nameEl.textContent.trim()) return;
+    FloatingButton.show(panel);
   }
 
   /**
@@ -85,8 +102,18 @@
   /**
    * Find all business listings on the current page and attach
    * hover event listeners to show the floating capture button.
+   * @param {boolean} resetPanels - If true, reset ghlProcessed on panel elements
+   *   so they get re-attached after Google re-renders them.
    */
-  function attachListingListeners() {
+  function attachListingListeners(resetPanels = false) {
+    // Reset ghlProcessed on panel-type elements so Google's async re-renders
+    // get re-attached (panels are replaced in-place, not newly added to DOM).
+    if (resetPanels && GoogleSearchExtractor.isMatch()) {
+      document.querySelectorAll(".kp-wholepage, .liYKde, .knowledge-panel, #local-place-viewer").forEach((el) => {
+        delete el.dataset.ghlProcessed;
+      });
+    }
+
     let listings = [];
 
     if (GoogleSearchExtractor.isMatch()) {
@@ -130,7 +157,7 @@
   /**
    * Observe DOM changes to detect dynamically loaded listings.
    * Scoped to subtree childList only; skips our own injected nodes.
-   * Debounced at 800ms to avoid flooding on heavy pages like Maps.
+   * Debounced at 300ms to catch Google's async panel renders quickly.
    */
   function observeDOMChanges() {
     const observer = new MutationObserver((mutations) => {
@@ -149,7 +176,10 @@
           ) continue;
           // Only re-scan when a meaningful content node is added
           clearTimeout(observeDOMChanges._debounce);
-          observeDOMChanges._debounce = setTimeout(attachListingListeners, 800);
+          observeDOMChanges._debounce = setTimeout(() => {
+            attachListingListeners(true);
+            autoShowOnLocalPlaceViewer();
+          }, 300);
           return;
         }
       }

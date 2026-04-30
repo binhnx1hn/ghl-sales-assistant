@@ -200,10 +200,18 @@ const FloatingButton = {
         window.addEventListener("scroll", this._yelpRepositionHandler, { passive: true, capture: true });
       }
     } else {
-      // On search results, position near the hovered listing
+      // On search results, position near the hovered/active listing.
+      // For wide panels like #local-place-viewer (~500px), rect.right + 8 can
+      // push the button off-screen — clamp to viewport with a safe margin.
       const rect = element.getBoundingClientRect();
-      this._button.style.top = `${Math.max(rect.top, 10)}px`;
-      this._button.style.left = `${Math.min(rect.right + 8, window.innerWidth - 160)}px`;
+      const btnWidth = 160;
+      const margin = 8;
+      const desiredLeft = rect.right + margin;
+      const clampedLeft = desiredLeft + btnWidth <= window.innerWidth
+        ? desiredLeft
+        : Math.max(rect.right - btnWidth - margin, margin);
+      this._button.style.top = `${Math.max(rect.top + 10, 10)}px`;
+      this._button.style.left = `${clampedLeft}px`;
       this._button.style.right = "auto";
     }
   },
